@@ -6,7 +6,8 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signInWithPopup, 
-  GoogleAuthProvider 
+  GoogleAuthProvider,
+  updateProfile
 } from 'firebase/auth';
 import { auth } from '../firebase';
 
@@ -28,12 +29,24 @@ const AuthPage: React.FC = () => {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
-        await createUserWithEmailAndPassword(auth, email, password);
-        // Profile creation is handled in AuthContext
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        // Update profile with name
+        if (userCredential.user) {
+          await updateProfile(userCredential.user, {
+            displayName: name
+          });
+        }
       }
       navigate('/dashboard');
     } catch (err: any) {
-      setError(err.message);
+      console.error("Auth Error:", err);
+      if (err.code === 'auth/unauthorized-domain') {
+        setError('এই ডোমেইনটি Firebase-এ অনুমোদিত নয়। দয়া করে Firebase Console-এ ডোমেইনটি যোগ করুন।');
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        setError('লগইন উইন্ডোটি বন্ধ করে দেওয়া হয়েছে।');
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
