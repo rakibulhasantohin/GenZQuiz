@@ -1,0 +1,7 @@
+{
+  "name": "GenZQuiz",
+  "description": "বাংলাদেশের সেরা কুইজ প্ল্যাটফর্ম - অফলাইন সাপোর্ট, রিয়েল-টাইম সিঙ্ক এবং প্রিমিয়াম ডিজাইনের সাথে।",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

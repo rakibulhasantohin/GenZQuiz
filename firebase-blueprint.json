@@ -1,0 +1,98 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and statistics",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "totalPoints": { "type": "integer" },
+        "xp": { "type": "integer" },
+        "level": { "type": "integer" },
+        "streak": { "type": "integer" },
+        "accuracy": { "type": "number" },
+        "quizzesPlayed": { "type": "integer" },
+        "preferredLanguage": { "type": "string", "enum": ["bn", "en"] },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "name"]
+    },
+    "Question": {
+      "title": "Question",
+      "description": "Quiz question details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "questionText": { "type": "string" },
+        "optionA": { "type": "string" },
+        "optionB": { "type": "string" },
+        "optionC": { "type": "string" },
+        "optionD": { "type": "string" },
+        "correctAnswer": { "type": "string", "enum": ["A", "B", "C", "D"] },
+        "explanation": { "type": "string" },
+        "category": { "type": "string" },
+        "topic": { "type": "string" },
+        "difficulty": { "type": "string", "enum": ["easy", "medium", "hard"] },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "language": { "type": "string", "enum": ["bn", "en"] },
+        "sourceType": { "type": "string", "enum": ["manual", "ai"] },
+        "approved": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["questionText", "optionA", "optionB", "optionC", "optionD", "correctAnswer", "category"]
+    },
+    "QuizSession": {
+      "title": "QuizSession",
+      "description": "Record of a single quiz session",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string" },
+        "userId": { "type": "string" },
+        "mode": { "type": "string" },
+        "category": { "type": "string" },
+        "score": { "type": "integer" },
+        "questionsAnswered": { "type": "integer" },
+        "correctCount": { "type": "integer" },
+        "wrongCount": { "type": "integer" },
+        "earnedXP": { "type": "integer" },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "endedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "LeaderboardEntry": {
+      "title": "LeaderboardEntry",
+      "description": "Entry in the global leaderboard",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "totalPoints": { "type": "integer" },
+        "level": { "type": "integer" },
+        "avatar": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/questions/{questionId}": {
+      "schema": "Question",
+      "description": "Question bank"
+    },
+    "/quiz_sessions/{sessionId}": {
+      "schema": "QuizSession",
+      "description": "History of played quizzes"
+    },
+    "/leaderboard/{userId}": {
+      "schema": "LeaderboardEntry",
+      "description": "Public leaderboard data"
+    }
+  }
+}
