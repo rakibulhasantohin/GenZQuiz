@@ -61,6 +61,7 @@ const AdminPage: React.FC = () => {
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [isBulkLoading, setIsBulkLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     show: boolean;
     type: 'single' | 'bulk';
@@ -162,8 +163,10 @@ const AdminPage: React.FC = () => {
         approved: false
       });
       fetchQuestions();
-    } catch (error) {
+      alert('নতুন প্রশ্ন সফলভাবে যুক্ত হয়েছে।');
+    } catch (error: any) {
       console.error('Error adding question:', error);
+      alert(`প্রশ্ন যুক্ত করতে সমস্যা হয়েছে: ${error.message || 'অজানা সমস্যা'}`);
     }
   };
 
@@ -262,7 +265,7 @@ const AdminPage: React.FC = () => {
         const currentBatchSize = Math.min(batchSize, genCount - totalGenerated);
         const generated = await generateQuizQuestions(cat, currentBatchSize);
         
-        if (generated.length > 0) {
+        if (generated && generated.length > 0) {
           const batch = writeBatch(db);
           generated.forEach(q => {
             const newDocRef = doc(collection(db, 'questions'));
@@ -275,14 +278,21 @@ const AdminPage: React.FC = () => {
           await batch.commit();
           totalGenerated += generated.length;
           setBulkProgress(Math.round((totalGenerated / genCount) * 100));
+        } else if (totalBatches === 1) {
+          // If only one batch and it failed to return anything
+          throw new Error('এআই কোনো প্রশ্ন জেনারেট করতে পারেনি।');
         }
       }
       
-      alert(`${totalGenerated}টি এআই প্রশ্ন যুক্ত হয়েছে।`);
+      if (totalGenerated === 0) {
+        alert('কোনো প্রশ্ন জেনারেট করা সম্ভব হয়নি। দয়া করে আবার চেষ্টা করুন।');
+      } else {
+        alert(`${totalGenerated}টি এআই প্রশ্ন যুক্ত হয়েছে।`);
+      }
       fetchQuestions();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating AI questions:', error);
-      alert('এআই জেনারেট করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।');
+      alert(`এআই জেনারেট করতে সমস্যা হয়েছে: ${error.message || 'আবার চেষ্টা করুন'}`);
     } finally {
       setIsGenerating(false);
       setBulkProgress(0);

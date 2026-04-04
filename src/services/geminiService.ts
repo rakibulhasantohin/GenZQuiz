@@ -5,6 +5,11 @@ import { CATEGORIES } from "../constants";
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 export async function generateQuizQuestions(category: string, count: number = 5): Promise<Partial<Question>[]> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('Gemini API Key missing. Please check your environment variables.');
+  }
+
   const categoryObj = CATEGORIES.find(c => c.id === category);
   const categoryName = categoryObj ? categoryObj.nameBn : category;
 
@@ -69,7 +74,7 @@ export async function generateQuizQuestions(category: string, count: number = 5)
     });
 
     const text = response.text;
-    if (!text) return [];
+    if (!text) throw new Error('Empty response from AI model');
     
     const generated = JSON.parse(text);
     return generated.map((q: any) => ({
@@ -80,9 +85,9 @@ export async function generateQuizQuestions(category: string, count: number = 5)
       approved: false,
       createdAt: new Date().toISOString()
     }));
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error generating questions:", error);
-    return [];
+    throw error; // Rethrow to be handled by AdminPage
   }
 }
 
