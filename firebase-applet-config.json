@@ -1,10 +1,10 @@
 {
-  "projectId": "noorcompanion-f7ccf",
-  "appId": "1:365848435838:web:8d51c833c961d21cb08c2f",
-  "apiKey": "AIzaSyB7ITeLAqXcT5k3Lrjh3okN1o3uOXQezEY",
-  "authDomain": "noorcompanion-f7ccf.firebaseapp.com",
+  "projectId": "genzquiz-b12cf",
+  "appId": "1:886399701247:web:ee8200614e4985d26d7cca",
+  "apiKey": "AIzaSyAZgxbO7pEDlgj5a3DXa6VDAsGGgx5ypUc",
+  "authDomain": "genzquiz-b12cf.firebaseapp.com",
   "firestoreDatabaseId": "ai-studio-71893640-40a9-4c5a-acc7-60dac9223ef1",
-  "storageBucket": "noorcompanion-f7ccf.firebasestorage.app",
-  "messagingSenderId": "365848435838",
+  "storageBucket": "genzquiz-b12cf.firebasestorage.app",
+  "messagingSenderId": "886399701247",
   "measurementId": ""
 }
