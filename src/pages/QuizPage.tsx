@@ -365,18 +365,19 @@ const QuizPage: React.FC = () => {
           >
             <div className="glass-card p-10 rounded-[40px] border-red-100/50 bg-red-50/10">
               <h2 className="text-2xl font-black text-gray-900 mb-6">{currentQuestion.questionText}</h2>
-              <div className="grid grid-cols-1 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 {['A', 'B', 'C', 'D'].map(key => (
                   <div 
                     key={key}
                     className={cn(
-                      "p-5 rounded-2xl border-2 font-bold",
+                      "p-4 rounded-2xl border-2 font-bold text-sm",
                       key === currentQuestion.correctAnswer 
                         ? "bg-emerald-50 border-emerald-500 text-emerald-700" 
                         : "bg-white border-gray-100 text-gray-400"
                     )}
                   >
-                    {key}. {currentQuestion[`option${key}` as keyof Question] as string}
+                    <span className="text-xs opacity-50 mr-2">{key}.</span>
+                    {currentQuestion[`option${key}` as keyof Question] as string}
                   </div>
                 ))}
               </div>
@@ -408,21 +409,21 @@ const QuizPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50/50 pb-20">
       {/* Header */}
-      <div className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-40 px-6 py-5">
-        <div className="max-w-4xl mx-auto flex items-center justify-between gap-6">
+      <div className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-40 px-4 py-2">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
           <button
             onClick={() => navigate('/categories')}
-            className="w-12 h-12 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-2xl transition-all active:scale-90"
+            className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-xl transition-all active:scale-90"
           >
-            <X size={28} />
+            <X size={24} />
           </button>
           
           <div className="flex-1">
-            <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">
+            <div className="flex justify-between text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1">
               <span>প্রগ্রেস</span>
               <span>{formatNumber(currentIndex + 1)} / {formatNumber(questions.length)}</span>
             </div>
-            <div className="h-3 bg-gray-100 rounded-full overflow-hidden p-0.5 border border-gray-50 shadow-inner">
+            <div className="h-2 bg-gray-100 rounded-full overflow-hidden p-0.5 border border-gray-50 shadow-inner">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${progress}%` }}
@@ -432,11 +433,11 @@ const QuizPage: React.FC = () => {
             </div>
           </div>
           
-          <div className="flex items-center gap-3 bg-indigo-50 px-4 py-2 rounded-2xl border border-indigo-100 shadow-sm">
-            {!isOnline && <WifiOff size={16} className="text-amber-500" />}
-            <Clock size={20} className="text-indigo-600" />
+          <div className="flex items-center gap-2 bg-indigo-50 px-3 py-1.5 rounded-xl border border-indigo-100 shadow-sm">
+            {!isOnline && <WifiOff size={14} className="text-amber-500" />}
+            <Clock size={16} className="text-indigo-600" />
             <span className={cn(
-              "text-xl font-black tabular-nums transition-colors",
+              "text-base font-black tabular-nums transition-colors",
               timeLeft < 10 ? 'text-red-500 animate-pulse' : 'text-indigo-600'
             )}>
               {timeLeft}
@@ -445,7 +446,7 @@ const QuizPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-6 pt-12">
+      <div className="max-w-3xl mx-auto px-4 pt-4 md:pt-10">
         <AnimatePresence mode="wait">
           <motion.div
             key={currentIndex}
@@ -453,25 +454,24 @@ const QuizPage: React.FC = () => {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.95 }}
             transition={{ type: "spring", damping: 20, stiffness: 100 }}
-            className="space-y-10"
+            className="space-y-4 md:space-y-8"
           >
             {/* Question Card */}
-            <div className="glass-card p-10 md:p-16 rounded-[48px] relative overflow-hidden group">
-              <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600/10"></div>
-              <div className="absolute -top-6 -right-6 w-32 h-32 bg-indigo-600/5 rounded-full blur-3xl group-hover:bg-indigo-600/10 transition-colors"></div>
+            <div className="glass-card p-6 md:p-12 rounded-[28px] md:rounded-[48px] relative overflow-hidden group">
+              <div className="absolute top-0 left-0 w-full h-1.5 bg-indigo-600/10"></div>
               
-              <div className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 text-xs font-black uppercase tracking-widest rounded-full mb-8 border border-indigo-100 shadow-sm">
-                <Zap size={14} fill="currentColor" />
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 text-[10px] md:text-xs font-black uppercase tracking-widest rounded-full mb-4 border border-indigo-100 shadow-sm">
+                <Zap size={12} fill="currentColor" />
                 প্রশ্ন {formatNumber(currentIndex + 1)}
               </div>
               
-              <h2 className="text-3xl md:text-4xl font-black text-gray-900 leading-[1.4] tracking-tight">
+              <h2 className="text-xl md:text-4xl font-black text-gray-900 leading-[1.4] tracking-tight">
                 {currentQuestion.questionText}
               </h2>
             </div>
 
             {/* Options */}
-            <div className="grid grid-cols-1 gap-5">
+            <div className="grid grid-cols-2 gap-3 md:gap-6">
               {['A', 'B', 'C', 'D'].map((key, i) => {
                 const optionText = currentQuestion[`option${key}` as keyof Question] as string;
                 const isCorrect = key === currentQuestion.correctAnswer;
@@ -479,47 +479,49 @@ const QuizPage: React.FC = () => {
                 
                 let variantClass = "bg-white border-gray-100 text-gray-700 hover:border-indigo-200 hover:bg-indigo-50/30 hover:shadow-lg hover:-translate-y-0.5";
                 if (isAnswered) {
-                  if (isCorrect) variantClass = "bg-emerald-50 border-emerald-500 text-emerald-700 shadow-glow-emerald ring-2 ring-emerald-500 ring-offset-4";
-                  else if (isSelected) variantClass = "bg-red-50 border-red-500 text-red-700 ring-2 ring-red-500 ring-offset-4";
+                  if (isCorrect) variantClass = "bg-emerald-50 border-emerald-500 text-emerald-700 shadow-glow-emerald ring-2 ring-emerald-500 ring-offset-2";
+                  else if (isSelected) variantClass = "bg-red-50 border-red-500 text-red-700 ring-2 ring-red-500 ring-offset-2";
                   else variantClass = "bg-white border-gray-100 text-gray-300 opacity-40 grayscale";
                 }
 
                 return (
                   <motion.button
                     key={key}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.1 }}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.05 }}
                     disabled={isAnswered}
                     onClick={() => handleAnswer(key)}
                     className={cn(
-                      "group flex items-center justify-between p-7 rounded-[32px] border-2 transition-all duration-300 text-left font-black text-xl shadow-sm",
+                      "group flex flex-col items-start gap-2 p-4 md:p-7 rounded-[24px] md:rounded-[36px] border-2 transition-all duration-300 text-left font-black shadow-sm relative overflow-hidden",
                       variantClass
                     )}
                   >
-                    <div className="flex items-center gap-6">
+                    <div className="flex items-center justify-between w-full">
                       <div className={cn(
-                        "w-12 h-12 rounded-2xl flex items-center justify-center border-2 transition-all duration-300 text-lg shadow-sm",
+                        "w-8 h-8 md:w-12 md:h-12 rounded-xl flex items-center justify-center border-2 transition-all duration-300 text-sm md:text-lg shadow-sm",
                         isAnswered && isCorrect ? 'bg-emerald-500 border-emerald-500 text-white' : 
                         isAnswered && isSelected ? 'bg-red-500 border-red-500 text-white' :
                         'bg-gray-50 border-gray-100 text-gray-400 group-hover:border-indigo-200 group-hover:text-indigo-600 group-hover:bg-white'
                       )}>
                         {key}
                       </div>
-                      <span className="leading-tight">{optionText}</span>
+                      
+                      <AnimatePresence>
+                        {isAnswered && isCorrect && (
+                          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-emerald-500">
+                            <CheckCircle2 size={20} fill="currentColor" className="text-emerald-100" />
+                          </motion.div>
+                        )}
+                        {isAnswered && isSelected && !isCorrect && (
+                          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-red-500">
+                            <XCircle size={20} fill="currentColor" className="text-red-100" />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
-                    <AnimatePresence>
-                      {isAnswered && isCorrect && (
-                        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-emerald-500">
-                          <CheckCircle2 size={32} fill="currentColor" className="text-emerald-100" />
-                        </motion.div>
-                      )}
-                      {isAnswered && isSelected && !isCorrect && (
-                        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-red-500">
-                          <XCircle size={32} fill="currentColor" className="text-red-100" />
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+
+                    <span className="leading-tight text-sm md:text-xl break-words w-full line-clamp-2">{optionText}</span>
                   </motion.button>
                 );
               })}
@@ -529,27 +531,29 @@ const QuizPage: React.FC = () => {
             <AnimatePresence>
               {isAnswered && (
                 <motion.div
-                  initial={{ opacity: 0, y: 30 }}
+                  initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="space-y-8"
+                  className="space-y-4 md:space-y-6"
                 >
-                  <div className="glass-card p-8 rounded-[40px] border-indigo-100/50 bg-indigo-50/30 flex gap-6 relative overflow-hidden">
+                  <div className="glass-card p-5 md:p-10 rounded-[28px] md:rounded-[40px] border-indigo-100/50 bg-indigo-50/30 flex gap-4 md:gap-6 relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-600"></div>
-                    <div className="w-14 h-14 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-indigo-100">
-                      <Info size={28} />
+                    <div className="w-10 h-10 md:w-16 md:h-16 bg-indigo-600 text-white rounded-xl md:rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-indigo-100">
+                      <Info size={20} className="md:hidden" />
+                      <Info size={32} className="hidden md:block" />
                     </div>
                     <div>
-                      <h4 className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-2">সঠিক উত্তর ও ব্যাখ্যা</h4>
-                      <p className="text-xl font-bold text-indigo-900 leading-relaxed">{currentQuestion.explanation}</p>
+                      <h4 className="text-[10px] md:text-xs font-black text-indigo-400 uppercase tracking-widest mb-1">ব্যাখ্যা</h4>
+                      <p className="text-sm md:text-2xl font-bold text-indigo-900 leading-relaxed line-clamp-3 md:line-clamp-none">{currentQuestion.explanation}</p>
                     </div>
                   </div>
 
                   <button
                     onClick={nextQuestion}
-                    className="btn-primary w-full py-6 text-2xl shadow-2xl shadow-indigo-200 flex items-center justify-center gap-4 group"
+                    className="btn-primary w-full py-5 md:py-8 text-xl md:text-3xl shadow-xl shadow-indigo-100 flex items-center justify-center gap-4 group"
                   >
                     {currentIndex === questions.length - 1 ? 'ফলাফল দেখুন' : 'পরের প্রশ্ন'}
-                    <ArrowRight size={28} className="group-hover:translate-x-2 transition-transform" />
+                    <ArrowRight size={24} className="md:hidden group-hover:translate-x-2 transition-transform" />
+                    <ArrowRight size={36} className="hidden md:block group-hover:translate-x-2 transition-transform" />
                   </button>
                 </motion.div>
               )}
