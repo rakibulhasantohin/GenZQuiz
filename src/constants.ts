@@ -2,58 +2,67 @@ import { Category } from './types';
 
 export const CATEGORIES: Category[] = [
   {
-    id: 'general-knowledge',
-    name: 'General Knowledge',
-    nameBn: 'সাধারণ জ্ঞান',
-    description: 'Explore the world with general facts.',
-    icon: 'Globe',
-    color: 'bg-blue-500',
-    questionCount: 120
+    id: 'facebook-quiz',
+    name: 'Facebook Quiz',
+    nameBn: 'ফেসবুক কুইজ',
+    description: 'Facebook quizzes are created purely for entertainment.',
+    icon: 'Facebook',
+    color: 'bg-blue-600',
+    questionCount: 20
   },
   {
     id: 'islamic-knowledge',
     name: 'Islamic Knowledge',
     nameBn: 'ইসলামিক জ্ঞান',
     description: 'Deepen your understanding of Islam.',
-    icon: 'Moon',
+    icon: 'MoonStar',
     color: 'bg-emerald-600',
-    questionCount: 10
+    questionCount: 20
   },
   {
     id: 'bangladesh-history',
     name: 'Bangladesh History',
     nameBn: 'বাংলাদেশের ইতিহাস',
     description: 'Learn about our roots and liberation.',
-    icon: 'Flag',
+    icon: 'Landmark',
     color: 'bg-red-600',
-    questionCount: 10
-  },
-  {
-    id: 'science-tech',
-    name: 'Science & Tech',
-    nameBn: 'বিজ্ঞান ও প্রযুক্তি',
-    description: 'Latest in science and technology.',
-    icon: 'Cpu',
-    color: 'bg-purple-600',
-    questionCount: 10
-  },
-  {
-    id: 'geography',
-    name: 'Geography',
-    nameBn: 'ভুগোল',
-    description: 'Maps, countries, and landscapes.',
-    icon: 'Map',
-    color: 'bg-amber-600',
-    questionCount: 10
+    questionCount: 20
   },
   {
     id: 'literature',
     name: 'Literature',
     nameBn: 'সাহিত্য',
     description: 'World and Bangla literature.',
-    icon: 'BookOpen',
+    icon: 'Library',
     color: 'bg-indigo-600',
-    questionCount: 10
+    questionCount: 20
+  },
+  {
+    id: 'geography',
+    name: 'Geography',
+    nameBn: 'ভূগোল',
+    description: 'Maps, countries, and landscapes.',
+    icon: 'Compass',
+    color: 'bg-amber-600',
+    questionCount: 20
+  },
+  {
+    id: 'science-tech',
+    name: 'Science & Tech',
+    nameBn: 'বিজ্ঞান ও প্রযুক্তি',
+    description: 'Latest in science and technology.',
+    icon: 'Atom',
+    color: 'bg-purple-600',
+    questionCount: 20
+  },
+  {
+    id: 'general-knowledge',
+    name: 'General Knowledge',
+    nameBn: 'সাধারণ জ্ঞান',
+    description: 'Explore the world with general facts.',
+    icon: 'Brain',
+    color: 'bg-blue-500',
+    questionCount: 120
   }
 ];
 
@@ -95,4 +104,5 @@ export const ACHIEVEMENTS = [
   { id: 'champion', name: 'চ্যাম্পিয়ন', icon: '🏆', color: 'bg-yellow-50', desc: 'প্রথম স্থান অর্জন', requirement: 'লিডারবোর্ডে প্রবেশ করুন' },
   { id: 'science-expert', name: 'বিজ্ঞান বিশেষজ্ঞ', icon: '🔬', color: 'bg-purple-50', desc: 'বিজ্ঞানে পারদর্শী', requirement: 'বিজ্ঞানে ৫টি কুইজ খেলুন' },
   { id: 'perfect-score', name: 'পারফেক্ট স্কোর', icon: '⭐', color: 'bg-emerald-50', desc: 'সবগুলো সঠিক', requirement: 'একটি কুইজে ১০০% স্কোর' },
+  { id: 'verified', name: 'ভেরিফাইড', icon: '✅', color: 'bg-cyan-50', desc: 'যাচাইকৃত প্রোফাইল', requirement: 'প্রোফাইল ভেরিফাই করুন' },
 ];

@@ -22,6 +22,7 @@ const QuizPage: React.FC = () => {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
   const [score, setScore] = useState(0);
+  const [correctCount, setCorrectCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [timeLeft, setTimeLeft] = useState(30);
   const [quizEnded, setQuizEnded] = useState(false);
@@ -137,11 +138,13 @@ const QuizPage: React.FC = () => {
     const isCorrect = option === currentQ.correctAnswer;
 
     if (isCorrect) {
+      setCorrectCount(prev => prev + 1);
+      const multiplier = profile?.isVerified ? 2 : 1;
       if (categoryId === 'daily-challenge') {
-        // 500 points total for 15 questions = ~33.33 per question
-        setScore(prev => prev + (500 / 15));
+        // 500 points total for 15 questions = ~33.33 per question (1000 for verified)
+        setScore(prev => prev + ((500 * multiplier) / 15));
       } else {
-        setScore(prev => prev + 10);
+        setScore(prev => prev + (10 * multiplier));
       }
     } else {
       // Track wrong question
@@ -227,9 +230,10 @@ const QuizPage: React.FC = () => {
       }
       
       // 2. Perfect Score
+      const multiplier = profile?.isVerified ? 2 : 1;
       const isPerfectScore = categoryId === 'daily-challenge' 
-        ? finalScore >= 500 
-        : finalScore === questions.length * 10;
+        ? finalScore >= (500 * multiplier) 
+        : finalScore === questions.length * (10 * multiplier);
 
       if (isPerfectScore && questions.length > 0 && !newAchievements.includes('perfect-score')) {
         newAchievements.push('perfect-score');
@@ -238,6 +242,11 @@ const QuizPage: React.FC = () => {
       // 3. Category specific (simplified check)
       if (categoryId === 'bangladesh-history' && !newAchievements.includes('history-buff')) {
         newAchievements.push('history-buff');
+      }
+
+      // 4. Verified Achievement
+      if (profile.isVerified && !newAchievements.includes('verified')) {
+        newAchievements.push('verified');
       }
 
       // Save session
@@ -255,7 +264,17 @@ const QuizPage: React.FC = () => {
 
       // Update user profile
       const today = new Date().toLocaleDateString('en-CA');
+      const getWeekId = () => {
+        const d = new Date();
+        const day = d.getDay();
+        const diff = (day + 1) % 7;
+        d.setDate(d.getDate() - diff);
+        return d.toLocaleDateString('en-CA');
+      };
+      const currentWeek = getWeekId();
+      
       const isNewDay = profile.lastDailyUpdate !== today;
+      const isNewWeek = profile.lastWeeklyUpdate !== currentWeek;
       
       const updateData: any = {
         totalPoints: increment(finalScore),
@@ -266,6 +285,8 @@ const QuizPage: React.FC = () => {
         updatedAt: serverTimestamp(),
         lastDailyUpdate: today,
         dailyPoints: isNewDay ? finalScore : increment(finalScore),
+        lastWeeklyUpdate: currentWeek,
+        weeklyPoints: isNewWeek ? finalScore : increment(finalScore),
       };
 
       if (categoryId === 'daily-challenge') {
@@ -274,20 +295,21 @@ const QuizPage: React.FC = () => {
 
       await updateDoc(doc(db, 'users', profile.uid), updateData);
 
-      // Update leaderboard (Daily)
+      // Update leaderboard (Weekly)
       await setDoc(doc(db, 'leaderboard', profile.uid), {
         userId: profile.uid,
         displayName: profile.name,
         avatar: profile.photoURL || '',
-        dailyPoints: isNewDay ? finalScore : increment(finalScore),
+        weeklyPoints: isNewWeek ? finalScore : increment(finalScore),
         level: newLevel,
-        lastDailyUpdate: today,
+        lastWeeklyUpdate: currentWeek,
+        isVerified: profile.isVerified || false,
       }, { merge: true });
 
-      navigate('/result', { state: { score: finalScore, total: questions.length, earnedXP } });
+      navigate('/result', { state: { score: finalScore, total: questions.length, earnedXP, correctCount } });
     } catch (error) {
       console.error('Error finishing quiz:', error);
-      navigate('/result', { state: { score: finalScore, total: questions.length, earnedXP } });
+      navigate('/result', { state: { score: finalScore, total: questions.length, earnedXP, correctCount } });
     }
   };
 
@@ -543,13 +565,13 @@ const QuizPage: React.FC = () => {
                     </div>
                     <div>
                       <h4 className="text-[10px] md:text-xs font-black text-indigo-400 uppercase tracking-widest mb-1">ব্যাখ্যা</h4>
-                      <p className="text-sm md:text-2xl font-bold text-indigo-900 leading-relaxed line-clamp-3 md:line-clamp-none">{currentQuestion.explanation}</p>
+                      <p className="text-sm md:text-2xl font-bold text-indigo-900 leading-relaxed">{currentQuestion.explanation}</p>
                     </div>
                   </div>
 
                   <button
                     onClick={nextQuestion}
-                    className="btn-primary w-full py-5 md:py-8 text-xl md:text-3xl shadow-xl shadow-indigo-100 flex items-center justify-center gap-4 group"
+                    className="btn-primary w-full py-5 md:py-8 text-xl md:text-3xl shadow-xl shadow-indigo-100 flex items-center justify-center gap-4 group mt-6 md:mt-10"
                   >
                     {currentIndex === questions.length - 1 ? 'ফলাফল দেখুন' : 'পরের প্রশ্ন'}
                     <ArrowRight size={24} className="md:hidden group-hover:translate-x-2 transition-transform" />

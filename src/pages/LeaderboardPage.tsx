@@ -6,6 +6,9 @@ import { LeaderboardEntry } from '../types';
 import { formatNumber, cn } from '../lib/utils';
 import { Trophy, Medal, Star, User, Crown, TrendingUp, Search, Info } from 'lucide-react';
 import { useAuth } from '../AuthContext';
+import VerifiedBadge from '../components/VerifiedBadge';
+
+import { Link } from 'react-router-dom';
 
 const LeaderboardPage: React.FC = () => {
   const { profile } = useAuth();
@@ -13,44 +16,52 @@ const LeaderboardPage: React.FC = () => {
   const [userRank, setUserRank] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const today = new Date().toLocaleDateString('en-CA');
+  const getWeekId = () => {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = (day + 1) % 7;
+    d.setDate(d.getDate() - diff);
+    return d.toLocaleDateString('en-CA');
+  };
+  const currentWeek = getWeekId();
 
   useEffect(() => {
-    // Query top 20 for today
+    // Query top 20 for this week
     const q = query(
       collection(db, 'leaderboard'), 
-      where('lastDailyUpdate', '==', today),
-      orderBy('dailyPoints', 'desc'), 
+      where('lastWeeklyUpdate', '==', currentWeek),
+      orderBy('weeklyPoints', 'desc'), 
       limit(20)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => doc.data() as any);
-      // Map dailyPoints to totalPoints for the UI component compatibility or update UI
+      // Map weeklyPoints to totalPoints for the UI component compatibility
       const mappedData: LeaderboardEntry[] = data.map(d => ({
         userId: d.userId,
         displayName: d.displayName,
-        totalPoints: d.dailyPoints, // Show daily points as requested
+        totalPoints: d.weeklyPoints, // Show weekly points
         level: d.level,
         xp: d.xp || 0,
-        avatar: d.avatar
+        avatar: d.avatar,
+        isVerified: d.isVerified
       }));
       setEntries(mappedData);
       setLoading(false);
     });
 
-    // Get current user's rank if they have played today
+    // Get current user's rank if they have played this week
     if (profile) {
       const fetchUserRank = async () => {
         const userRef = collection(db, 'leaderboard');
-        const userDoc = await getDocs(query(userRef, where('userId', '==', profile.uid), where('lastDailyUpdate', '==', today)));
+        const userDoc = await getDocs(query(userRef, where('userId', '==', profile.uid), where('lastWeeklyUpdate', '==', currentWeek)));
         
         if (!userDoc.empty) {
           const userData = userDoc.docs[0].data();
           const rankQuery = query(
             userRef, 
-            where('lastDailyUpdate', '==', today),
-            where('dailyPoints', '>', userData.dailyPoints)
+            where('lastWeeklyUpdate', '==', currentWeek),
+            where('weeklyPoints', '>', userData.weeklyPoints)
           );
           const rankSnapshot = await getCountFromServer(rankQuery);
           setUserRank(rankSnapshot.data().count + 1);
@@ -62,7 +73,7 @@ const LeaderboardPage: React.FC = () => {
     }
 
     return () => unsubscribe();
-  }, [profile, today]);
+  }, [profile, currentWeek]);
 
   const filteredEntries = entries.filter(entry => 
     entry.displayName.toLowerCase().includes(searchQuery.toLowerCase())
@@ -88,11 +99,11 @@ const LeaderboardPage: React.FC = () => {
         <div className="space-y-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 text-[10px] font-black uppercase tracking-widest rounded-full border border-indigo-100 shadow-sm">
             <Trophy size={12} fill="currentColor" />
-            সেরা ২০ খেলোয়াড় (আজ)
+            সেরা ২০ খেলোয়াড় (এই সপ্তাহ)
           </div>
           <h1 className="text-3xl font-black text-gray-900 tracking-tight">লিডারবোর্ড</h1>
           <p className="text-sm text-gray-500 font-medium max-w-md leading-relaxed">
-            আজকের সেরা কুইজ প্রেমীদের তালিকা। রাত ১২টায় এটি রিসেট হয়।
+            এই সপ্তাহের সেরা কুইজ প্রেমীদের তালিকা। প্রতি শনিবার রাত ১২টায় এটি রিসেট হয়।
           </p>
         </div>
         
@@ -139,7 +150,7 @@ const LeaderboardPage: React.FC = () => {
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: i * 0.05 }}
                     className={cn(
-                      "p-4 flex items-center justify-between hover:bg-indigo-50/30 transition-all group cursor-pointer relative overflow-hidden",
+                      "p-3 md:p-4 flex items-center justify-between hover:bg-indigo-50/30 transition-all group cursor-pointer relative overflow-hidden w-full",
                       profile?.uid === entry.userId ? "bg-indigo-50/50" : "",
                       isFirst ? "bg-cyan-50/30" : isSecond ? "bg-amber-50/30" : isThird ? "bg-gray-50/30" : ""
                     )}
@@ -148,11 +159,11 @@ const LeaderboardPage: React.FC = () => {
                       <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-400/5 blur-[60px] -z-10 pointer-events-none" />
                     )}
                     
-                    <div className="flex items-center gap-8">
-                      <div className="w-8 flex items-center justify-center">
+                    <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0">
+                      <div className="w-6 md:w-8 flex items-center justify-center shrink-0">
                         {rank <= 3 ? (
                           <div className={cn(
-                            "w-8 h-8 rounded-full flex items-center justify-center font-black text-sm shadow-sm",
+                            "w-6 h-6 md:w-8 md:h-8 rounded-full flex items-center justify-center font-black text-[10px] md:text-sm shadow-sm",
                             isFirst ? 'bg-gradient-to-br from-cyan-300 to-cyan-500 text-white' : 
                             isSecond ? 'bg-gradient-to-br from-amber-300 to-amber-500 text-white' : 
                             'bg-gradient-to-br from-gray-200 to-gray-400 text-white'
@@ -160,75 +171,92 @@ const LeaderboardPage: React.FC = () => {
                             {rank}
                           </div>
                         ) : (
-                          <span className="font-black text-gray-300 text-base group-hover:text-indigo-300 transition-colors">
+                          <span className="font-black text-gray-300 text-xs md:text-base group-hover:text-indigo-300 transition-colors">
                             #{rank}
                           </span>
                         )}
                       </div>
                       
-                      <div className="flex items-center gap-4">
-                        <div className="relative">
+                      <Link to={`/user/${entry.userId}`} className="flex items-center gap-2 md:gap-3 hover:opacity-80 transition-opacity flex-1 min-w-0">
+                        <div className="relative shrink-0">
                           <div className={cn(
-                            "w-14 h-14 rounded-2xl bg-white overflow-hidden border-2 shadow-md group-hover:scale-105 transition-transform",
+                            "w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-white overflow-hidden border-2 shadow-sm group-hover:scale-105 transition-transform",
                             isFirst ? 'border-cyan-400' : 
                             isSecond ? 'border-amber-400' : 
                             isThird ? 'border-gray-300' : 'border-white'
                           )}>
                             {entry.avatar ? (
-                              <img src={entry.avatar} alt={entry.displayName} className="w-full h-full object-cover" />
+                              <img src={entry.avatar} alt={entry.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center bg-gray-50 text-gray-300">
-                                <User size={28} />
+                                <User size={24} />
                               </div>
                             )}
                           </div>
                           
                           {rank <= 3 && (
                             <div className={cn(
-                              "absolute -top-2 -right-2 drop-shadow-md z-10 p-1 rounded-lg bg-white/90 backdrop-blur-sm border border-white/50",
+                              "absolute -top-1 -right-1 md:-top-1.5 md:-right-1.5 drop-shadow-md z-10 p-0.5 rounded-md bg-white/90 backdrop-blur-sm border border-white/50",
                               isFirst ? 'text-cyan-500' : 
                               isSecond ? 'text-amber-500' : 
                               'text-gray-400'
                             )}>
-                              <Crown size={14} fill="currentColor" />
+                              <Crown size={12} fill="currentColor" />
                             </div>
                           )}
                         </div>
                         
-                        <div>
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <h4 className="font-black text-gray-900 text-sm">{entry.displayName}</h4>
-                            {rankLabel && (
-                              <span className={cn(
-                                "text-[8px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded-md",
-                                isFirst ? 'bg-cyan-100 text-cyan-600' : 
-                                isSecond ? 'bg-amber-100 text-amber-600' : 
-                                'bg-gray-100 text-gray-600'
-                              )}>
-                                {rankLabel}
-                              </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <h4 className="font-black text-gray-900 text-sm md:text-base leading-tight">{entry.displayName}</h4>
+                            {entry.isVerified && (
+                              <VerifiedBadge size={14} />
                             )}
                           </div>
-                          <div className="flex items-center gap-2 text-[8px] font-bold text-gray-400 uppercase tracking-widest">
-                            <TrendingUp size={10} className="text-emerald-500" />
-                            শীর্ষ ২০
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <div className="text-[9px] md:text-[10px] font-black text-gray-500 uppercase tracking-widest shrink-0">
+                              লেভেল {formatNumber(entry.level)}
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {rankLabel ? (
+                                <span className={cn(
+                                  "text-[8px] md:text-[9px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded-md shadow-sm",
+                                  isFirst ? 'bg-cyan-500 text-white' : 
+                                  isSecond ? 'bg-amber-500 text-white' : 
+                                  'bg-gray-400 text-white'
+                                )}>
+                                  {rankLabel}
+                                </span>
+                              ) : (
+                                <span className="text-[8px] md:text-[9px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-400 border border-indigo-100">
+                                  Top 20
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      </Link>
                     </div>
                     
-                    <div className="flex items-center gap-12">
-                      <div className="hidden md:flex flex-col items-end gap-1">
-                        <div className="px-3 py-1 bg-indigo-50 text-indigo-600 text-[10px] font-black uppercase tracking-widest rounded-lg">
-                          লেভেল {formatNumber(entry.level)}
-                        </div>
-                        <div className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">
+                    <div className="flex items-center gap-2 md:gap-6 shrink-0 ml-2">
+                      <div className="hidden sm:flex flex-col items-end gap-0.5">
+                        <div className="text-[8px] font-black text-indigo-600 uppercase tracking-widest">
                           {formatNumber(entry.xp)} XP
                         </div>
                       </div>
-                      <div className="w-20 flex items-center justify-end gap-2">
-                        <Star size={18} className="text-amber-500" fill="currentColor" />
-                        <span className="text-xl font-black text-gray-900 tracking-tight">{formatNumber(entry.totalPoints)}</span>
+                      <div className={cn(
+                        "flex items-center gap-1 px-2 md:px-3 py-1.5 md:py-2 rounded-xl md:rounded-2xl border shadow-sm shrink-0",
+                        isFirst ? 'bg-cyan-50 border-cyan-100' : 
+                        isSecond ? 'bg-amber-50 border-amber-100' : 
+                        isThird ? 'bg-gray-50 border-gray-200' : 
+                        'bg-gray-50 border-gray-100'
+                      )}>
+                        <Star size={12} className={cn(
+                          isFirst ? 'text-cyan-500' : 
+                          isSecond ? 'text-amber-500' : 
+                          'text-gray-400'
+                        )} fill="currentColor" />
+                        <span className="text-sm md:text-base font-black text-gray-900 tracking-tight">{formatNumber(entry.totalPoints)}</span>
                       </div>
                     </div>
                   </motion.div>
@@ -242,8 +270,8 @@ const LeaderboardPage: React.FC = () => {
           <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-300">
             <Trophy size={32} />
           </div>
-          <h3 className="text-xl font-black text-gray-900 mb-2">আজকের কোনো ডাটা নেই</h3>
-          <p className="text-gray-500">কুইজ খেলে আজকের লিডারবোর্ডে আপনার জায়গা করে নিন!</p>
+          <h3 className="text-xl font-black text-gray-900 mb-2">এই সপ্তাহের কোনো ডাটা নেই</h3>
+          <p className="text-gray-500">কুইজ খেলে এই সপ্তাহের লিডারবোর্ডে আপনার জায়গা করে নিন!</p>
         </div>
       )}
 
@@ -271,7 +299,7 @@ const LeaderboardPage: React.FC = () => {
               </div>
               <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-xl">
                 <Star size={16} className="text-amber-400" fill="currentColor" />
-                <span className="text-xl font-black tracking-tight">{formatNumber(profile?.dailyPoints || 0)}</span>
+                <span className="text-xl font-black tracking-tight">{formatNumber(profile?.weeklyPoints || 0)}</span>
               </div>
             </div>
           </motion.div>

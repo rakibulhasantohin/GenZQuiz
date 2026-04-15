@@ -11,6 +11,7 @@ import QuizPage from './pages/QuizPage';
 import ResultPage from './pages/ResultPage';
 import LeaderboardPage from './pages/LeaderboardPage';
 import ProfilePage from './pages/ProfilePage';
+import PublicProfilePage from './pages/PublicProfilePage';
 import AdminPage from './pages/AdminPage';
 import MistakesPage from './pages/MistakesPage';
 
@@ -30,6 +31,7 @@ export default function App() {
               <Route path="/result" element={<ResultPage />} />
               <Route path="/leaderboard" element={<LeaderboardPage />} />
               <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/user/:userId" element={<PublicProfilePage />} />
               <Route path="/admin" element={<AdminPage />} />
               <Route path="/mistakes" element={<MistakesPage />} />
             </Route>

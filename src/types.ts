@@ -11,10 +11,14 @@ export interface UserProfile {
   quizzesPlayed: number;
   preferredLanguage: 'bn' | 'en';
   role: 'user' | 'admin';
+  isBlocked?: boolean;
+  isVerified?: boolean;
   achievements: string[];
   dailyChallengeCompletedAt?: string;
   dailyPoints: number;
   lastDailyUpdate?: string;
+  weeklyPoints: number;
+  lastWeeklyUpdate?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -59,6 +63,7 @@ export interface LeaderboardEntry {
   level: number;
   xp: number;
   avatar?: string;
+  isVerified?: boolean;
 }
 
 export interface Mistake {
@@ -80,4 +85,6 @@ export interface Category {
   icon: string;
   color: string;
   questionCount?: number;
+  order?: number;
+  image?: string;
 }

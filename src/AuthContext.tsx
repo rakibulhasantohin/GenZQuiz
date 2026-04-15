@@ -29,6 +29,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
+  const getWeekId = useCallback(() => {
+    const d = new Date();
+    const day = d.getDay(); // 0 (Sun) to 6 (Sat)
+    const diff = (day + 1) % 7; // Saturday is start (0 offset)
+    d.setDate(d.getDate() - diff);
+    return d.toLocaleDateString('en-CA'); // Saturday's date
+  }, []);
+
   const syncPendingScores = useCallback(async (userId: string) => {
     if (!navigator.onLine) return;
     
@@ -43,6 +51,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const userDocRef = doc(db, 'users', userId);
         const today = new Date().toLocaleDateString('en-CA');
+        const currentWeek = getWeekId();
 
         await updateDoc(userDocRef, {
           totalPoints: increment(scoreData.score),
@@ -50,6 +59,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           quizzesPlayed: increment(1),
           dailyPoints: profile?.lastDailyUpdate === today ? increment(scoreData.score) : scoreData.score,
           lastDailyUpdate: today,
+          weeklyPoints: profile?.lastWeeklyUpdate === currentWeek ? increment(scoreData.score) : scoreData.score,
+          lastWeeklyUpdate: currentWeek,
           updatedAt: new Date().toISOString(),
           quizHistory: arrayUnion({
             categoryId: scoreData.categoryId,
@@ -112,8 +123,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             quizzesPlayed: 0,
             dailyPoints: 0,
             lastDailyUpdate: new Date().toLocaleDateString('en-CA'),
+            weeklyPoints: 0,
+            lastWeeklyUpdate: getWeekId(),
             preferredLanguage: 'bn',
             role: 'user',
+            isBlocked: false,
+            isVerified: false,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           };
@@ -123,7 +138,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Listen for real-time updates
         unsubscribeProfile = onSnapshot(userDocRef, (doc) => {
           if (doc.exists()) {
-            setProfile(doc.data() as UserProfile);
+            const data = doc.data() as UserProfile;
+            setProfile(data);
+            
+            // Auto-grant verified achievement if verified
+            if (data.isVerified && !data.achievements?.includes('verified')) {
+              updateDoc(userDocRef, {
+                achievements: arrayUnion('verified')
+              }).catch(console.error);
+            }
           }
         });
       } else {

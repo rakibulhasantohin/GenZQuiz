@@ -8,7 +8,7 @@ import { formatNumber } from '../lib/utils';
 const ResultPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { score, total, earnedXP } = location.state || { score: 0, total: 0, earnedXP: 0 };
+  const { score, total, earnedXP, correctCount } = location.state || { score: 0, total: 0, earnedXP: 0, correctCount: 0 };
 
   useEffect(() => {
     if (!location.state) {
@@ -16,7 +16,7 @@ const ResultPage: React.FC = () => {
     }
   }, [location.state, navigate]);
 
-  const accuracy = Math.round((score / (total * 10)) * 100) || 0;
+  const accuracy = Math.round((correctCount / total) * 100) || 0;
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">

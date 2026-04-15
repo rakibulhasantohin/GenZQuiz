@@ -1,17 +1,75 @@
-import React from 'react';
-import { motion } from 'motion/react';
+import React, { useState, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../AuthContext';
 import { formatNumber, cn } from '../lib/utils';
-import { User, Mail, Calendar, Trophy, Star, Zap, Settings, LogOut, Shield } from 'lucide-react';
-import { auth } from '../firebase';
+import { User, Mail, Calendar, Trophy, Star, Zap, Settings, LogOut, Shield, Camera, Check, X, Loader2, Upload } from 'lucide-react';
+import { auth, db, storage } from '../firebase';
+import { doc, updateDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Link } from 'react-router-dom';
+import VerifiedBadge from '../components/VerifiedBadge';
 
 import { ACHIEVEMENTS } from '../constants';
 
 const ProfilePage: React.FC = () => {
   const { profile, isAdmin } = useAuth();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editPhotoURL, setEditPhotoURL] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!profile) return null;
+
+  const handleStartEdit = () => {
+    setEditName(profile.name);
+    setEditPhotoURL(profile.photoURL || '');
+    setIsEditing(true);
+  };
+
+  const handleSave = async () => {
+    if (!editName.trim()) return;
+    setIsSaving(true);
+    try {
+      const userRef = doc(db, 'users', profile.uid);
+      await updateDoc(userRef, {
+        name: editName.trim(),
+        photoURL: editPhotoURL.trim(),
+        updatedAt: new Date().toISOString()
+      });
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      alert('প্রোফাইল আপডেট করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Check file size (limit to 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      alert('ছবির সাইজ ২ মেগাবাইটের কম হতে হবে।');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const storageRef = ref(storage, `avatars/${profile.uid}_${Date.now()}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      setEditPhotoURL(downloadURL);
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      alert('ছবি আপলোড করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।');
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const unlockedCount = profile.achievements?.length || 0;
 
@@ -33,54 +91,140 @@ const ProfilePage: React.FC = () => {
           <div className="relative group">
             <div className="absolute inset-0 bg-indigo-600 rounded-[32px] blur-xl opacity-20 group-hover:opacity-40 transition-opacity"></div>
             <div className="w-24 h-24 rounded-[32px] bg-white border-4 border-white shadow-xl flex items-center justify-center text-indigo-600 overflow-hidden relative z-10">
-              {profile.photoURL ? (
+              {isEditing ? (
+                <div 
+                  className="w-full h-full relative cursor-pointer group/upload"
+                  onClick={() => !isUploading && fileInputRef.current?.click()}
+                >
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                  {editPhotoURL ? (
+                    <img src={editPhotoURL} alt="Preview" className="w-full h-full object-cover opacity-50 group-hover/upload:opacity-30 transition-opacity" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gray-50 text-gray-300">
+                      <User size={48} strokeWidth={1.5} />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    {isUploading ? (
+                      <Loader2 size={24} className="text-indigo-600 animate-spin" />
+                    ) : (
+                      <div className="flex flex-col items-center gap-1">
+                        <Camera size={24} className="text-indigo-600" />
+                        <span className="text-[8px] font-black uppercase text-indigo-600">আপলোড</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : profile.photoURL ? (
                 <img src={profile.photoURL} alt={profile.name} className="w-full h-full object-cover" />
               ) : (
                 <User size={48} strokeWidth={1.5} />
               )}
             </div>
-            <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-indigo-600 text-white rounded-xl flex items-center justify-center shadow-lg border-2 border-white z-20">
-              <Star size={14} fill="currentColor" />
-            </div>
+            {!isEditing && (
+              <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-indigo-600 text-white rounded-xl flex items-center justify-center shadow-lg border-2 border-white z-20">
+                <Star size={14} fill="currentColor" />
+              </div>
+            )}
           </div>
           
           <div className="text-center md:text-left flex-1 space-y-3">
-            <div>
-              <div className="flex flex-wrap justify-center md:justify-start items-center gap-3 mb-1">
-                <h1 className="text-2xl font-black text-gray-900 tracking-tight">{profile.name}</h1>
-                {isAdmin && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-50 text-red-600 text-[10px] font-black uppercase tracking-widest rounded-full border border-red-100 shadow-sm">
-                    <Shield size={10} />
-                    এডমিন
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-wrap justify-center md:justify-start items-center gap-4 text-gray-500 font-bold text-xs">
-                <div className="flex items-center gap-1.5">
-                  <Mail size={16} className="text-gray-400" />
-                  <span>{profile.email}</span>
+            {isEditing ? (
+              <div className="space-y-3 max-w-md">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-indigo-600 uppercase tracking-widest ml-1">আপনার নাম</label>
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="নাম লিখুন"
+                    className="w-full px-4 py-2 bg-white/50 backdrop-blur-md border-2 border-indigo-100 rounded-xl focus:border-indigo-500 outline-none font-bold text-gray-900 transition-all"
+                  />
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <Calendar size={16} className="text-gray-400" />
-                  <span>সদস্য: {new Date(profile.createdAt).toLocaleDateString('bn-BD')}</span>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-indigo-600 uppercase tracking-widest ml-1">প্রোফাইল ছবির লিঙ্ক (URL)</label>
+                  <input
+                    type="text"
+                    value={editPhotoURL}
+                    onChange={(e) => setEditPhotoURL(e.target.value)}
+                    placeholder="https://example.com/photo.jpg"
+                    className="w-full px-4 py-2 bg-white/50 backdrop-blur-md border-2 border-indigo-100 rounded-xl focus:border-indigo-500 outline-none font-bold text-gray-900 transition-all"
+                  />
                 </div>
               </div>
-            </div>
+            ) : (
+              <div>
+                <div className="flex flex-wrap justify-center md:justify-start items-center gap-3 mb-1">
+                  <h1 className="text-2xl font-black text-gray-900 tracking-tight">{profile.name}</h1>
+                  {profile.isVerified && (
+                    <VerifiedBadge size={24} />
+                  )}
+                  {isAdmin && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-50 text-red-600 text-[10px] font-black uppercase tracking-widest rounded-full border border-red-100 shadow-sm">
+                      <Shield size={10} />
+                      এডমিন
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap justify-center md:justify-start items-center gap-4 text-gray-500 font-bold text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <Mail size={16} className="text-gray-400" />
+                    <span>{profile.email}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Calendar size={16} className="text-gray-400" />
+                    <span>সদস্য: {new Date(profile.createdAt).toLocaleDateString('bn-BD')}</span>
+                  </div>
+                </div>
+              </div>
+            )}
             
             <div className="flex flex-wrap justify-center md:justify-start gap-3 pt-1">
-              {isAdmin && (
-                <Link
-                  to="/admin"
-                  className="btn-primary bg-red-600 hover:bg-red-700 flex items-center gap-2 px-6 py-2 text-xs"
-                >
-                  <Shield size={16} />
-                  এডমিন প্যানেল
-                </Link>
+              {isEditing ? (
+                <>
+                  <button
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="btn-primary flex items-center gap-2 px-6 py-2 text-xs"
+                  >
+                    {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                    সেভ করুন
+                  </button>
+                  <button
+                    onClick={() => setIsEditing(false)}
+                    disabled={isSaving}
+                    className="btn-secondary flex items-center gap-2 px-6 py-2 text-xs"
+                  >
+                    <X size={16} />
+                    বাতিল
+                  </button>
+                </>
+              ) : (
+                <>
+                  {isAdmin && (
+                    <Link
+                      to="/admin"
+                      className="btn-primary bg-red-600 hover:bg-red-700 flex items-center gap-2 px-6 py-2 text-xs"
+                    >
+                      <Shield size={16} />
+                      এডমিন প্যানেল
+                    </Link>
+                  )}
+                  <button 
+                    onClick={handleStartEdit}
+                    className="btn-secondary flex items-center gap-2 px-6 py-2 text-xs"
+                  >
+                    <Settings size={16} />
+                    প্রোফাইল এডিট
+                  </button>
+                </>
               )}
-              <button className="btn-secondary flex items-center gap-2 px-6 py-2 text-xs">
-                <Settings size={16} />
-                প্রোফাইল এডিট
-              </button>
             </div>
           </div>
         </div>

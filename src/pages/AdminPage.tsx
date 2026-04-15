@@ -2,20 +2,23 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   collection, addDoc, getDocs, deleteDoc, doc, updateDoc, 
-  serverTimestamp, query, where, orderBy, writeBatch, getDoc, setDoc
+  serverTimestamp, query, where, orderBy, writeBatch, getDoc, setDoc, onSnapshot
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { useCategories } from '../CategoryContext';
-import { Question, Category } from '../types';
+import { Question, Category, UserProfile } from '../types';
 import { MOCK_QUESTIONS } from '../constants';
 import { 
   Plus, Trash2, Check, X, Search, Database, Sparkles, 
-  ShieldAlert, Filter, ChevronDown, CheckCircle2, 
+  ShieldAlert, Filter, ChevronDown, BadgeCheck, 
   BarChart3, Users, User, BookOpen, Clock, MoreVertical,
-  ThumbsUp, ThumbsDown, Eye
+  ThumbsUp, ThumbsDown, Eye, ChevronUp, Edit2, Upload,
+  Image as ImageIcon
 } from 'lucide-react';
 import { formatNumber, cn } from '../lib/utils';
+import { Link } from 'react-router-dom';
+import VerifiedBadge from '../components/VerifiedBadge';
 import { 
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend 
@@ -23,16 +26,19 @@ import {
 
 const AdminPage: React.FC = () => {
   const { isAdmin } = useAuth();
-  const { categories, categoryCounts, updateCategoryCount, addCategory } = useCategories();
+  const { categories, categoryCounts, updateCategoryCount, addCategory, reorderCategories, updateCategory, deleteCategory } = useCategories();
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showAddCategoryForm, setShowAddCategoryForm] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all'); // all, approved, pending
-  const [activeTab, setActiveTab] = useState<'questions' | 'categories'>('questions');
+  const [activeTab, setActiveTab] = useState<'questions' | 'categories' | 'users'>('questions');
   const [selectedQuestions, setSelectedQuestions] = useState<string[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
   const [localCategoryCounts, setLocalCategoryCounts] = useState<Record<string, number>>({});
   const [isSavingCounts, setIsSavingCounts] = useState(false);
   
@@ -73,6 +79,17 @@ const AdminPage: React.FC = () => {
 
   useEffect(() => {
     fetchQuestions();
+    
+    // Real-time users listener
+    setUsersLoading(true);
+    const usersQuery = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+    const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
+      const userData = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
+      setUsers(userData);
+      setUsersLoading(false);
+    });
+
+    return () => unsubscribeUsers();
   }, []);
 
   useEffect(() => {
@@ -93,6 +110,50 @@ const AdminPage: React.FC = () => {
       alert('আপডেট করতে সমস্যা হয়েছে।');
     } finally {
       setIsSavingCounts(false);
+    }
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean = false) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 500 * 1024) { // 500KB limit for base64
+      alert('ছবিটি অনেক বড়। দয়া করে ৫০০কেবি এর নিচের ছবি দিন।');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      if (isEdit && editingCategory) {
+        setEditingCategory({ ...editingCategory, image: base64String });
+      } else {
+        setNewCategory({ ...newCategory, image: base64String });
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleUpdateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCategory) return;
+    
+    try {
+      await updateCategory(editingCategory.id, editingCategory);
+      setEditingCategory(null);
+      alert('বিভাগ আপডেট করা হয়েছে।');
+    } catch (error) {
+      alert('আপডেট করতে সমস্যা হয়েছে।');
+    }
+  };
+
+  const handleDeleteCategoryClick = async (id: string) => {
+    if (!window.confirm('আপনি কি নিশ্চিত যে আপনি এই বিভাগটি মুছে ফেলতে চান? এই বিভাগের সকল প্রশ্নও মুছে যেতে পারে।')) return;
+    try {
+      await deleteCategory(id);
+      alert('বিভাগ মুছে ফেলা হয়েছে।');
+    } catch (error) {
+      alert('মুছে ফেলতে সমস্যা হয়েছে।');
     }
   };
 
@@ -316,6 +377,51 @@ const AdminPage: React.FC = () => {
     }
   };
 
+  const handleMoveCategory = async (index: number, direction: 'up' | 'down') => {
+    const newCategories = [...categories];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    
+    if (targetIndex < 0 || targetIndex >= newCategories.length) return;
+    
+    [newCategories[index], newCategories[targetIndex]] = [newCategories[targetIndex], newCategories[index]];
+    
+    try {
+      await reorderCategories(newCategories);
+    } catch (error) {
+      alert('বিভাগ মুভ করতে সমস্যা হয়েছে।');
+    }
+  };
+
+  const handleToggleBlock = async (userId: string, currentStatus: boolean) => {
+    try {
+      await updateDoc(doc(db, 'users', userId), { isBlocked: !currentStatus });
+    } catch (error) {
+      console.error('Error toggling block status:', error);
+      alert('স্ট্যাটাস পরিবর্তন করতে সমস্যা হয়েছে।');
+    }
+  };
+
+  const handleToggleVerify = async (userId: string, currentStatus: boolean) => {
+    try {
+      const newStatus = !currentStatus;
+      await updateDoc(doc(db, 'users', userId), { isVerified: newStatus });
+      
+      // Also update leaderboard entries for this user
+      const leaderboardRef = collection(db, 'leaderboard');
+      const q = query(leaderboardRef, where('userId', '==', userId));
+      const snapshot = await getDocs(q);
+      
+      const batch = writeBatch(db);
+      snapshot.docs.forEach(d => {
+        batch.update(d.ref, { isVerified: newStatus });
+      });
+      await batch.commit();
+    } catch (error) {
+      console.error('Error toggling verify status:', error);
+      alert('ভেরিফিকেশন স্ট্যাটাস পরিবর্তন করতে সমস্যা হয়েছে।');
+    }
+  };
+
   const filteredQuestions = useMemo(() => {
     return questions.filter(q => {
       const matchesSearch = q.questionText.toLowerCase().includes(searchQuery.toLowerCase());
@@ -422,7 +528,7 @@ const AdminPage: React.FC = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
           { label: 'মোট প্রশ্ন', value: stats.total, icon: Database, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-          { label: 'অনুমোদিত', value: stats.approved, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+          { label: 'অনুমোদিত', value: stats.approved, icon: BadgeCheck, color: 'text-emerald-600', bg: 'bg-emerald-50' },
           { label: 'অপেক্ষমান', value: stats.pending, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
           { label: 'AI জেনারেটেড', value: stats.aiGenerated, icon: Sparkles, color: 'text-purple-600', bg: 'bg-purple-50' },
         ].map((stat, i) => (
@@ -533,9 +639,18 @@ const AdminPage: React.FC = () => {
         >
           বিভাগ সেটিংস
         </button>
+        <button
+          onClick={() => setActiveTab('users')}
+          className={cn(
+            "px-6 py-3 rounded-xl font-black text-sm transition-all",
+            activeTab === 'users' ? "bg-white text-indigo-600 shadow-md" : "text-gray-500 hover:text-gray-700"
+          )}
+        >
+          ইউজার ম্যানেজমেন্ট
+        </button>
       </div>
 
-      {activeTab === 'questions' ? (
+      {activeTab === 'questions' && (
         <>
           <div className="glass-card p-4 rounded-[24px] space-y-4">
             <div className="flex flex-col lg:flex-row gap-4">
@@ -603,7 +718,7 @@ const AdminPage: React.FC = () => {
               >
                 <div className="flex items-center gap-2.5 px-2">
                   <div className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center">
-                    <CheckCircle2 size={14} />
+                    <BadgeCheck size={14} />
                   </div>
                   <span className="text-xs font-black tracking-tight">{formatNumber(selectedQuestions.length)}টি সিলেক্টেড</span>
                 </div>
@@ -715,7 +830,7 @@ const AdminPage: React.FC = () => {
                         <td className="px-6 py-6 text-center">
                           {q.approved ? (
                             <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-50 text-emerald-600 text-xs font-bold rounded-full border border-emerald-100">
-                              <CheckCircle2 size={12} /> অনুমোদিত
+                              <BadgeCheck size={12} /> অনুমোদিত
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 px-3 py-1 bg-amber-50 text-amber-600 text-xs font-bold rounded-full border border-amber-100">
@@ -751,7 +866,117 @@ const AdminPage: React.FC = () => {
             </div>
           </div>
         </>
-      ) : (
+      )}
+
+      {activeTab === 'users' && (
+        <div className="glass-card rounded-[40px] overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-50/50 border-b border-gray-100">
+                  <th className="px-8 py-6 text-xs font-black text-gray-400 uppercase tracking-widest">ব্যবহারকারী</th>
+                  <th className="px-6 py-6 text-xs font-black text-gray-400 uppercase tracking-widest">ইমেইল ও আইডি</th>
+                  <th className="px-6 py-6 text-xs font-black text-gray-400 uppercase tracking-widest text-center">স্ট্যাটাস</th>
+                  <th className="px-6 py-6 text-xs font-black text-gray-400 uppercase tracking-widest text-right">অ্যাকশন</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {usersLoading ? (
+                  <tr>
+                    <td colSpan={4} className="px-8 py-20 text-center">
+                      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600 mx-auto"></div>
+                    </td>
+                  </tr>
+                ) : users.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-8 py-20 text-center text-gray-500">কোনো ইউজার পাওয়া যায়নি।</td>
+                  </tr>
+                ) : (
+                  users.map((u) => (
+                    <tr key={u.uid} className="hover:bg-gray-50/50 transition-all">
+                      <td className="px-8 py-6">
+                        <Link to={`/user/${u.uid}`} className="flex items-center gap-4 hover:opacity-80 transition-opacity">
+                          <div className="w-12 h-12 rounded-2xl bg-white border-2 border-gray-100 overflow-hidden shadow-sm relative">
+                            {u.photoURL ? (
+                              <img src={u.photoURL} alt={u.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-gray-50 text-gray-300">
+                                <User size={24} />
+                              </div>
+                            )}
+                            {u.isVerified && (
+                              <div className="absolute -top-1 -right-1">
+                                <VerifiedBadge size={14} />
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-black text-gray-900">{u.name}</h4>
+                              {u.isVerified && (
+                                <VerifiedBadge size={16} />
+                              )}
+                            </div>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">লেভেল {formatNumber(u.level || 1)}</p>
+                          </div>
+                        </Link>
+                      </td>
+                      <td className="px-6 py-6">
+                        <div className="space-y-1">
+                          <p className="text-sm font-bold text-gray-600">{u.email}</p>
+                          <p className="text-[8px] font-mono text-gray-400 uppercase tracking-widest">{u.uid}</p>
+                        </div>
+                      </td>
+                      <td className="px-6 py-6 text-center">
+                        <div className="flex flex-col items-center gap-1">
+                          {u.isBlocked ? (
+                            <span className="px-3 py-1 bg-red-50 text-red-600 text-[10px] font-black uppercase tracking-widest rounded-full border border-red-100">ব্লকড</span>
+                          ) : (
+                            <span className="px-3 py-1 bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase tracking-widest rounded-full border border-emerald-100">অ্যাক্টিভ</span>
+                          )}
+                          {u.role === 'admin' && (
+                            <span className="px-3 py-1 bg-indigo-50 text-indigo-600 text-[10px] font-black uppercase tracking-widest rounded-full border border-indigo-100">এডমিন</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-6 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleToggleVerify(u.uid, !!u.isVerified)}
+                            className={cn(
+                              "px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all",
+                              u.isVerified 
+                                ? "bg-gray-100 text-gray-500 hover:bg-gray-200" 
+                                : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100"
+                            )}
+                          >
+                            {u.isVerified ? 'আন-ভেরিফাই' : 'ভেরিফাই'}
+                          </button>
+                          {u.role !== 'admin' && (
+                            <button
+                              onClick={() => handleToggleBlock(u.uid, !!u.isBlocked)}
+                              className={cn(
+                                "px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all",
+                                u.isBlocked 
+                                  ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100" 
+                                  : "bg-red-50 text-red-600 hover:bg-red-100"
+                              )}
+                            >
+                              {u.isBlocked ? 'আন-ব্লক' : 'ব্লক'}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'categories' && (
         <div className="space-y-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -774,11 +999,48 @@ const AdminPage: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {categories.map(cat => (
-                <div key={cat.id} className="p-6 bg-gray-50 rounded-[32px] border border-gray-100 space-y-4">
+              {categories.map((cat, index) => (
+                <div key={cat.id} className="p-6 bg-gray-50 rounded-[32px] border border-gray-100 space-y-4 relative group/cat">
+                  <div className="absolute top-4 right-4 flex flex-col gap-1 opacity-0 group-hover/cat:opacity-100 transition-opacity z-10">
+                    <button
+                      onClick={() => handleMoveCategory(index, 'up')}
+                      disabled={index === 0}
+                      className="p-1.5 bg-white text-gray-400 hover:text-indigo-600 rounded-lg shadow-sm disabled:opacity-30"
+                      title="উপরে নিন"
+                    >
+                      <ChevronUp size={16} />
+                    </button>
+                    <button
+                      onClick={() => handleMoveCategory(index, 'down')}
+                      disabled={index === categories.length - 1}
+                      className="p-1.5 bg-white text-gray-400 hover:text-indigo-600 rounded-lg shadow-sm disabled:opacity-30"
+                      title="নিচে নিন"
+                    >
+                      <ChevronDown size={16} />
+                    </button>
+                    <button
+                      onClick={() => setEditingCategory(cat)}
+                      className="p-1.5 bg-white text-gray-400 hover:text-emerald-600 rounded-lg shadow-sm"
+                      title="এডিট করুন"
+                    >
+                      <Edit2 size={16} />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteCategoryClick(cat.id)}
+                      className="p-1.5 bg-white text-gray-400 hover:text-red-600 rounded-lg shadow-sm"
+                      title="ডিলিট করুন"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                  
                   <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 ${cat.color} rounded-xl flex items-center justify-center text-white shadow-sm`}>
-                      <BookOpen size={20} />
+                    <div className={`w-12 h-12 ${cat.color} rounded-xl flex items-center justify-center text-white shadow-sm overflow-hidden`}>
+                      {cat.image ? (
+                        <img src={cat.image} alt={cat.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <BookOpen size={20} />
+                      )}
                     </div>
                     <div>
                       <h4 className="font-black text-gray-900">{cat.nameBn}</h4>
@@ -872,6 +1134,21 @@ const AdminPage: React.FC = () => {
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">বিভাগের লোগো (Gallery)</label>
+                      <div className="flex items-center gap-3">
+                        <label className="flex-1 flex items-center justify-center gap-2 p-4 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl cursor-pointer hover:border-indigo-400 transition-all">
+                          <Upload size={20} className="text-gray-400" />
+                          <span className="text-xs font-bold text-gray-500">ছবি আপলোড</span>
+                          <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e)} />
+                        </label>
+                        {newCategory.image && (
+                          <div className="w-14 h-14 rounded-xl overflow-hidden border-2 border-indigo-100 shrink-0">
+                            <img src={newCategory.image} alt="Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">রঙ (Tailwind Class)</label>
                       <select
                         value={newCategory.color}
@@ -912,6 +1189,106 @@ const AdminPage: React.FC = () => {
           </motion.div>
         </div>
       )}
+
+      {/* Edit Category Modal */}
+      <AnimatePresence>
+        {editingCategory && (
+          <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-md z-[70] flex items-center justify-center p-6">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white w-full max-w-2xl rounded-[40px] shadow-2xl p-10 max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h2 className="text-2xl font-black text-gray-900">বিভাগ এডিট করুন</h2>
+                  <p className="text-gray-500 font-medium">বিভাগের তথ্য পরিবর্তন করুন।</p>
+                </div>
+                <button onClick={() => setEditingCategory(null)} className="w-10 h-10 flex items-center justify-center text-gray-400 hover:bg-gray-100 rounded-xl transition-all">
+                  <X size={24} />
+                </button>
+              </div>
+
+              <form onSubmit={handleUpdateCategory} className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">বিভাগের নাম (English)</label>
+                    <input
+                      type="text"
+                      required
+                      value={editingCategory.name}
+                      onChange={(e) => setEditingCategory({ ...editingCategory, name: e.target.value })}
+                      className="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 font-bold"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">বিভাগের নাম (বাংলা)</label>
+                    <input
+                      type="text"
+                      required
+                      value={editingCategory.nameBn}
+                      onChange={(e) => setEditingCategory({ ...editingCategory, nameBn: e.target.value })}
+                      className="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">বিবরণ</label>
+                  <textarea
+                    value={editingCategory.description}
+                    onChange={(e) => setEditingCategory({ ...editingCategory, description: e.target.value })}
+                    className="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 font-bold min-h-[80px]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">বিভাগের লোগো (Gallery)</label>
+                    <div className="flex items-center gap-3">
+                      <label className="flex-1 flex items-center justify-center gap-2 p-4 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl cursor-pointer hover:border-indigo-400 transition-all">
+                        <Upload size={20} className="text-gray-400" />
+                        <span className="text-xs font-bold text-gray-500">ছবি পরিবর্তন</span>
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, true)} />
+                      </label>
+                      {editingCategory.image && (
+                        <div className="w-14 h-14 rounded-xl overflow-hidden border-2 border-indigo-100 shrink-0">
+                          <img src={editingCategory.image} alt="Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">রঙ</label>
+                    <select
+                      value={editingCategory.color}
+                      onChange={(e) => setEditingCategory({ ...editingCategory, color: e.target.value })}
+                      className="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 font-bold"
+                    >
+                      <option value="bg-blue-500">Blue</option>
+                      <option value="bg-emerald-600">Emerald</option>
+                      <option value="bg-red-600">Red</option>
+                      <option value="bg-purple-600">Purple</option>
+                      <option value="bg-amber-600">Amber</option>
+                      <option value="bg-indigo-600">Indigo</option>
+                      <option value="bg-pink-600">Pink</option>
+                    </select>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn-primary w-full py-4 flex items-center justify-center gap-2"
+                >
+                  <Check size={20} />
+                  আপডেট সেভ করুন
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Add Question Modal */}
       <AnimatePresence>
@@ -1014,7 +1391,7 @@ const AdminPage: React.FC = () => {
                   type="submit"
                   className="btn-primary w-full py-6 text-xl shadow-2xl shadow-indigo-200 flex items-center justify-center gap-3"
                 >
-                  <CheckCircle2 size={24} />
+                  <Check size={24} />
                   প্রশ্নটি সংরক্ষণ করুন
                 </button>
               </form>
