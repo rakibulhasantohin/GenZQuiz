@@ -30,6 +30,7 @@ const AdminPage: React.FC = () => {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [showAddCategoryForm, setShowAddCategoryForm] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -228,6 +229,24 @@ const AdminPage: React.FC = () => {
     } catch (error: any) {
       console.error('Error adding question:', error);
       alert(`প্রশ্ন যুক্ত করতে সমস্যা হয়েছে: ${error.message || 'অজানা সমস্যা'}`);
+    }
+  };
+
+  const handleUpdateQuestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingQuestion) return;
+    try {
+      const { id, ...updateData } = editingQuestion;
+      await updateDoc(doc(db, 'questions', id), {
+        ...updateData,
+        updatedAt: new Date().toISOString()
+      });
+      setEditingQuestion(null);
+      fetchQuestions();
+      alert('প্রশ্নটি সফলভাবে আপডেট করা হয়েছে।');
+    } catch (error: any) {
+      console.error('Error updating question:', error);
+      alert(`আপডেট করতে সমস্যা হয়েছে: ${error.message || 'অজানা সমস্যা'}`);
     }
   };
 
@@ -850,6 +869,13 @@ const AdminPage: React.FC = () => {
                               </button>
                             )}
                             <button
+                              onClick={() => setEditingQuestion(q)}
+                              className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                              title="এডিট করুন"
+                            >
+                              <Edit2 size={20} />
+                            </button>
+                            <button
                               onClick={() => setDeleteConfirm({ show: true, type: 'single', id: q.id })}
                               className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
                               title="মুছে ফেলুন"
@@ -1283,6 +1309,116 @@ const AdminPage: React.FC = () => {
                 >
                   <Check size={20} />
                   আপডেট সেভ করুন
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Question Modal */}
+      <AnimatePresence>
+        {editingQuestion && (
+          <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-md z-50 flex items-center justify-center p-6">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white w-full max-w-3xl rounded-[48px] shadow-2xl p-10 max-h-[90vh] overflow-y-auto border border-white/20"
+            >
+              <div className="flex items-center justify-between mb-10">
+                <div>
+                  <h2 className="text-3xl font-black text-gray-900 tracking-tight">প্রশ্ন এডিট করুন</h2>
+                  <p className="text-gray-500 font-medium">প্রশ্নের তথ্য পরিবর্তন করুন।</p>
+                </div>
+                <button onClick={() => setEditingQuestion(null)} className="w-12 h-12 flex items-center justify-center text-gray-400 hover:bg-gray-100 rounded-2xl transition-all">
+                  <X size={28} />
+                </button>
+              </div>
+
+              <form onSubmit={handleUpdateQuestion} className="space-y-8">
+                <div className="space-y-4">
+                  <label className="block text-sm font-black text-gray-400 uppercase tracking-widest">প্রশ্ন টেক্সট</label>
+                  <textarea
+                    className="w-full p-6 bg-gray-50 border-none rounded-3xl focus:ring-2 focus:ring-indigo-500 text-lg font-medium leading-relaxed"
+                    rows={3}
+                    placeholder="আপনার প্রশ্নটি এখানে লিখুন..."
+                    value={editingQuestion.questionText}
+                    onChange={e => setEditingQuestion({...editingQuestion, questionText: e.target.value})}
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {['A', 'B', 'C', 'D'].map(opt => (
+                    <div key={opt} className="space-y-3">
+                      <label className="block text-sm font-black text-gray-400 uppercase tracking-widest">অপশন {opt}</label>
+                      <input
+                        className="w-full p-5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 font-bold"
+                        placeholder={`অপশন ${opt} লিখুন`}
+                        value={editingQuestion[`option${opt}` as keyof Question] as string}
+                        onChange={e => setEditingQuestion({...editingQuestion, [`option${opt}`]: e.target.value})}
+                        required
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="space-y-3">
+                    <label className="block text-sm font-black text-gray-400 uppercase tracking-widest">সঠিক উত্তর</label>
+                    <select
+                      className="w-full p-5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 font-bold appearance-none cursor-pointer"
+                      value={editingQuestion.correctAnswer}
+                      onChange={e => setEditingQuestion({...editingQuestion, correctAnswer: e.target.value as any})}
+                    >
+                      <option value="A">A</option>
+                      <option value="B">B</option>
+                      <option value="C">C</option>
+                      <option value="D">D</option>
+                    </select>
+                  </div>
+                  <div className="space-y-3">
+                    <label className="block text-sm font-black text-gray-400 uppercase tracking-widest">বিভাগ</label>
+                    <select
+                      className="w-full p-5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 font-bold appearance-none cursor-pointer"
+                      value={editingQuestion.category}
+                      onChange={e => setEditingQuestion({...editingQuestion, category: e.target.value})}
+                    >
+                      {categories.map(c => <option key={c.id} value={c.id}>{c.nameBn}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-3">
+                    <label className="block text-sm font-black text-gray-400 uppercase tracking-widest">কঠিনতা</label>
+                    <select
+                      className="w-full p-5 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 font-bold appearance-none cursor-pointer"
+                      value={editingQuestion.difficulty}
+                      onChange={e => setEditingQuestion({...editingQuestion, difficulty: e.target.value as any})}
+                    >
+                      <option value="easy">সহজ</option>
+                      <option value="medium">মাঝারি</option>
+                      <option value="hard">কঠিন</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <label className="block text-sm font-black text-gray-400 uppercase tracking-widest">ব্যাখ্যা</label>
+                  <textarea
+                    className="w-full p-6 bg-gray-50 border-none rounded-3xl focus:ring-2 focus:ring-indigo-500 font-medium"
+                    rows={2}
+                    placeholder="সঠিক উত্তরের ব্যাখ্যা লিখুন..."
+                    value={editingQuestion.explanation}
+                    onChange={e => setEditingQuestion({...editingQuestion, explanation: e.target.value})}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn-primary w-full py-6 text-xl shadow-2xl shadow-indigo-200 flex items-center justify-center gap-3"
+                >
+                  <Check size={24} />
+                  আপডেট সংরক্ষণ করুন
                 </button>
               </form>
             </motion.div>
