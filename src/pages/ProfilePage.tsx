@@ -1,13 +1,14 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../AuthContext';
 import { formatNumber, cn } from '../lib/utils';
-import { User, Mail, Calendar, Trophy, Star, Zap, Settings, LogOut, Shield, Camera, Check, X, Loader2, Upload } from 'lucide-react';
+import { User, Mail, Calendar, Trophy, Star, Zap, Settings, LogOut, Shield, Camera, Check, X, Loader2, Upload, Lock, Eye, EyeOff } from 'lucide-react';
 import { auth, db, storage } from '../firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Link } from 'react-router-dom';
 import VerifiedBadge from '../components/VerifiedBadge';
+import { EmailAuthProvider, linkWithCredential } from 'firebase/auth';
 
 import { ACHIEVEMENTS } from '../constants';
 
@@ -19,6 +20,54 @@ const ProfilePage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSettingPassword, setIsSettingPassword] = useState(false);
+  const [hasPasswordProvider, setHasPasswordProvider] = useState(true);
+
+  useEffect(() => {
+    if (auth.currentUser) {
+      const hasPwd = auth.currentUser.providerData.some(p => p.providerId === 'password');
+      setHasPasswordProvider(hasPwd);
+    }
+  }, []);
+
+  const handleSetPassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      alert('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      alert('পাসওয়ার্ড দুটি মিলছে না।');
+      return;
+    }
+
+    setIsSettingPassword(true);
+    try {
+      const user = auth.currentUser;
+      if (!user || !user.email) {
+        throw new Error('User email not found');
+      }
+
+      const credential = EmailAuthProvider.credential(user.email, newPassword);
+      await linkWithCredential(user, credential);
+      setHasPasswordProvider(true);
+      alert('সফলভাবে পাসওয়ার্ড সেট করা হয়েছে! এখন আপনি ইমেইল এবং পাসওয়ার্ড দিয়ে লগইন করতে পারবেন।');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (error: any) {
+      console.error('Error setting password:', error);
+      if (error.code === 'auth/requires-recent-login') {
+         alert('নিরাপত্তার স্বার্থে আপনাকে পুনরায় লগইন করতে হবে। দয়া করে লগআউট করে আবার লগইন করুন।');
+      } else {
+         alert('পাসওয়ার্ড সেট করতে সমস্যা হয়েছে: ' + (error.message || 'Unknown error'));
+      }
+    } finally {
+      setIsSettingPassword(false);
+    }
+  };
 
   if (!profile) return null;
 
@@ -289,6 +338,70 @@ const ProfilePage: React.FC = () => {
           })}
         </div>
       </section>
+
+      {/* Set Password - For Social Users */}
+      {!hasPasswordProvider && (
+        <section className="glass-card p-6 md:p-8 rounded-[32px] border-2 border-indigo-50">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center shadow-sm">
+              <Lock size={20} />
+            </div>
+            <div>
+              <h2 className="text-xl font-black text-gray-900 tracking-tight">পাসওয়ার্ড সেট করুন</h2>
+              <p className="text-xs font-bold text-gray-500">পরবর্তীতে ইমেইল এবং পাসওয়ার্ড দিয়ে লগইন করতে এটি প্রয়োজন।</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-indigo-600 uppercase tracking-widest ml-1">নতুন পাসওয়ার্ড</label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-4 py-3 bg-white/50 backdrop-blur-md border-2 border-indigo-100 rounded-2xl focus:border-indigo-500 outline-none font-black text-gray-900 transition-all placeholder:text-gray-300"
+                />
+                <button
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-indigo-600 transition-colors"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-indigo-600 uppercase tracking-widest ml-1">পাসওয়ার্ড নিশ্চিত করুন</label>
+              <input
+                type={showPassword ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full px-4 py-3 bg-white/50 backdrop-blur-md border-2 border-indigo-100 rounded-2xl focus:border-indigo-500 outline-none font-black text-gray-900 transition-all placeholder:text-gray-300"
+              />
+            </div>
+          </div>
+
+          <div className="mt-8">
+            <button
+              onClick={handleSetPassword}
+              disabled={isSettingPassword || !newPassword || !confirmPassword}
+              className="btn-primary w-full md:w-auto px-10 py-3 rounded-2xl flex items-center justify-center gap-2 group disabled:opacity-50 disabled:grayscale"
+            >
+              {isSettingPassword ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                <>
+                  <span>পাসওয়ার্ড সেট করুন</span>
+                  <Check size={18} className="group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* Logout Button - Condensed */}
       <button
