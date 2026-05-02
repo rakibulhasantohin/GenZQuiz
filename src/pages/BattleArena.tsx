@@ -108,10 +108,20 @@ const BattleArena: React.FC = () => {
       const field = isCreator ? 'creatorScore' : 'opponentScore';
       const statusField = isCreator ? 'creatorCompleted' : 'opponentCompleted';
       
+      // Calculate XP: 20 XP per correct answer
+      const earnedXP = score * 20;
+
       const updateData: any = {
         [field]: score,
         [statusField]: true
       };
+
+      // Update user profile with XP and Points safely
+      await updateDoc(doc(db, 'users', profile.uid), {
+        xp: increment(earnedXP),
+        totalPoints: increment(earnedXP),
+        quizzesPlayed: increment(1)
+      });
 
       // Check if this completes the battle for the second person
       const otherCompleted = isCreator ? battle.opponentCompleted : battle.creatorCompleted;
@@ -692,189 +702,277 @@ const BattleArena: React.FC = () => {
   if (gameOver || myCompleted) {
     const isWinner = battle.winnerId === profile.uid;
     const isDraw = battle.winnerId === 'draw';
-    const isWaitingResult = !battle.completed && !otherCompleted && battle.status !== 'completed';
+    const isWaitingResult = (isCreator ? !battle.opponentCompleted : !battle.creatorCompleted);
 
     return (
-      <div className="min-h-screen py-10 flex flex-col items-center justify-center space-y-12 relative overflow-hidden">
-        {/* Decorative particles for result screen */}
-        <div className="absolute top-0 left-0 w-full h-full pointer-events-none -z-10 bg-gray-50/50">
-           <div className="absolute top-10 left-10 w-4 h-4 bg-indigo-200 rounded-full animate-bounce"></div>
-           <div className="absolute bottom-40 right-20 w-6 h-6 bg-amber-200 rounded-full animate-pulse"></div>
-           <div className="absolute top-1/2 left-20 w-3 h-3 bg-violet-200 rounded-full animate-bounce" style={{ animationDelay: '1s' }}></div>
-        </div>
+      <div className="min-h-screen py-10 flex flex-col items-center justify-center space-y-12 relative overflow-hidden bg-white">
+        {/* Decorative Background Elements */}
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-indigo-50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 -z-10"></div>
+        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-amber-50 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2 -z-10"></div>
 
-        {isWaitingResult ? (
-          <div className="text-center space-y-8 max-w-md w-full">
-            <div className="relative mx-auto w-32 h-32">
-              <motion.div 
-                animate={{ rotate: 360 }}
-                transition={{ repeat: Infinity, duration: 10, ease: 'linear' }}
-                className="absolute inset-0 border-4 border-indigo-100 border-t-indigo-600 rounded-[40px]"
-              />
-              <div className="absolute inset-4 bg-indigo-50 rounded-[32px] flex items-center justify-center text-indigo-600">
-                <Users size={40} className="animate-bounce" />
+        <AnimatePresence mode="wait">
+          {isWaitingResult ? (
+            <motion.div 
+              key="waiting"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.1 }}
+              className="text-center space-y-12 max-w-md w-full px-6"
+            >
+              <div className="relative mx-auto w-40 h-40">
+                <motion.div 
+                  animate={{ rotate: 360 }}
+                  transition={{ repeat: Infinity, duration: 8, ease: 'linear' }}
+                  className="absolute inset-0 border-4 border-dashed border-indigo-200 rounded-[48px]"
+                />
+                <motion.div 
+                  animate={{ scale: [1, 1.1, 1] }}
+                  transition={{ repeat: Infinity, duration: 2 }}
+                  className="absolute inset-4 bg-indigo-600 rounded-[40px] flex items-center justify-center text-white shadow-2xl shadow-indigo-200"
+                >
+                  <Users size={56} className="animate-pulse" />
+                </motion.div>
               </div>
-            </div>
-            
-            <div className="space-y-3">
-              <h2 className="text-3xl font-black text-gray-900">ফলাফলের জন্য অপেক্ষা...</h2>
-              <p className="text-gray-500 font-medium">আপনি আপনার খেলা শেষ করেছেন। প্রতিপক্ষ খেলছেন। তিনি শেষ করলে ফলাফল জানানো হবে।</p>
-            </div>
+              
+              <div className="space-y-4">
+                <h2 className="text-4xl font-black text-gray-900 tracking-tight">ফলাফলের জন্য <span className="text-indigo-600">অপেক্ষা...</span></h2>
+                <p className="text-gray-500 font-medium leading-relaxed">
+                  দুর্দান্ত খেলেছেন! আপনার স্কোর <span className="text-indigo-600 font-black">{formatNumber(score)}</span>। 
+                  প্রতিপক্ষ এখনো খেলছেন, তিনি শেষ করলেই ফলাফল দেখা যাবে।
+                </p>
+              </div>
 
-            <div className="flex grid grid-cols-2 gap-4">
-              <div className="glass-card p-6 rounded-3xl bg-indigo-50/50 border-indigo-100">
-                <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1">আপনার উত্তর</p>
-                <p className="text-3xl font-black text-gray-900">{formatNumber(score)} / ৫</p>
+              <div className="flex grid grid-cols-2 gap-4">
+                <div className="glass-card p-6 rounded-[32px] bg-white border-indigo-100 shadow-xl shadow-indigo-100/20">
+                  <p className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.2em] mb-2">আপনার স্কোর</p>
+                  <div className="flex items-baseline gap-1 justify-center">
+                    <span className="text-4xl font-black text-gray-900">{formatNumber(score)}</span>
+                    <span className="text-xs font-bold text-gray-400">/৫</span>
+                  </div>
+                </div>
+                <div className="glass-card p-6 rounded-[32px] bg-gray-50/50 border-gray-100">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-2">প্রতিপক্ষ</p>
+                  <div className="flex gap-2 justify-center py-2">
+                    {[0, 1, 2].map(i => (
+                      <motion.div 
+                        key={i}
+                        animate={{ scale: [1, 1.5, 1], opacity: [0.3, 1, 0.3] }}
+                        transition={{ repeat: Infinity, duration: 1, delay: i * 0.2 }}
+                        className="w-2.5 h-2.5 bg-gray-300 rounded-full"
+                      />
+                    ))}
+                  </div>
+                </div>
               </div>
-              <div className="glass-card p-6 rounded-3xl bg-gray-50/50 border-gray-100">
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">প্রতিপক্ষ</p>
-                <p className="text-3xl font-black text-gray-300 tracking-widest">---</p>
+            </motion.div>
+          ) : (
+            <motion.div 
+              key="results"
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="w-full max-w-4xl px-6 flex flex-col items-center gap-12"
+            >
+              {/* Winner Header Animation */}
+              <div className="relative text-center">
+                <motion.div 
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: 'spring', damping: 10, stiffness: 100, delay: 0.2 }}
+                  className="relative inline-block mb-6"
+                >
+                  <div className={cn(
+                    "w-36 h-36 rounded-[48px] flex items-center justify-center shadow-2xl relative z-10",
+                    isWinner ? "bg-amber-400 text-amber-900 shadow-amber-200" : 
+                    isDraw ? "bg-indigo-600 text-white shadow-indigo-200" : 
+                    "bg-gray-100 text-gray-400 shadow-gray-100"
+                  )}>
+                    {isWinner ? <Trophy size={72} fill="currentColor" /> : isDraw ? <Users size={72} /> : <Zap size={72} />}
+                  </div>
+                  {isWinner && (
+                    <motion.div 
+                      animate={{ rotate: 360 }}
+                      transition={{ repeat: Infinity, duration: 10, ease: 'linear' }}
+                      className="absolute inset-0 border-4 border-dashed border-amber-300 -m-4 rounded-[60px]"
+                    />
+                  )}
+                </motion.div>
+
+                <motion.h1 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4 }}
+                  className="text-4xl md:text-6xl font-black text-gray-900 tracking-tight leading-none"
+                >
+                  {isWinner ? 'একদম কড়াকড়ি জয়!' : isDraw ? 'যুদ্ধ শেষ, ফলাফল ড্র!' : 'মন খারাপ করবেন না!'}
+                </motion.h1>
+                
+                <motion.p 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.6 }}
+                  className="text-gray-500 font-bold text-lg mt-4"
+                >
+                  {isWinner 
+                    ? (battle.stake > 0 ? `আপনি জিতে নিয়েছেন ${formatNumber(battle.stake * 2)}টি কয়েন!` : 'দুর্দান্ত পারফরম্যান্স! আপনি বিজয়ী!')
+                    : isDraw ? 'একটি হাড্ডাহাড্ডি লড়াই ছিল।' 
+                    : 'পরের বার অবশ্যই আরও ভালো করতে পারবেন।'}
+                </motion.p>
               </div>
-            </div>
-          </div>
-        ) : (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-2xl text-center space-y-10"
-          >
-            <div className="relative inline-block mt-10">
+
+              {/* Main Score Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full">
+                {/* Player 1 Card */}
+                <motion.div 
+                  initial={{ x: -20, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{ delay: 0.7 }}
+                  className={cn(
+                    "glass-card p-10 rounded-[56px] border-2 relative overflow-hidden transition-all",
+                    isCreator ? (isWinner ? "border-amber-400 bg-amber-50/50 shadow-2xl shadow-amber-100" : isDraw ? "border-indigo-400 bg-indigo-50/50 shadow-2xl shadow-indigo-100" : "border-gray-200 bg-white") 
+                    : (!isWinner && !isDraw ? "border-amber-400 bg-amber-50/50 shadow-2xl shadow-amber-100" : "border-gray-200 bg-white")
+                  )}
+                >
+                  {((isCreator && isWinner) || (!isCreator && !isWinner && !isDraw)) && (
+                    <div className="absolute top-0 right-0 bg-amber-400 text-amber-900 font-black text-[10px] uppercase tracking-widest px-6 py-2 rounded-bl-3xl">Winner</div>
+                  )}
+                  <div className="flex items-center gap-6 mb-8">
+                    <div className="w-20 h-20 rounded-[32px] bg-white shadow-xl flex items-center justify-center overflow-hidden border-4 border-white shrink-0">
+                      {battle.creatorPhoto ? <img src={battle.creatorPhoto} className="w-full h-full object-cover" /> : <Users size={32} className="text-gray-200" />}
+                    </div>
+                    <div className="text-left flex-1 min-w-0">
+                      <h4 className="font-black text-2xl text-gray-900 truncate tracking-tight">{battle.creatorName}</h4>
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Player 1 (Host)</p>
+                    </div>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-7xl font-black text-gray-900 leading-none">{formatNumber(battle.creatorScore)}</span>
+                    <span className="text-lg font-black text-gray-400">সঠিক</span>
+                  </div>
+                </motion.div>
+
+                {/* Player 2 Card */}
+                <motion.div 
+                  initial={{ x: 20, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{ delay: 0.8 }}
+                  className={cn(
+                    "glass-card p-10 rounded-[56px] border-2 relative overflow-hidden transition-all",
+                    !isCreator ? (isWinner ? "border-amber-400 bg-amber-50/50 shadow-2xl shadow-amber-100" : isDraw ? "border-indigo-400 bg-indigo-50/50 shadow-2xl shadow-indigo-100" : "border-gray-200 bg-white") 
+                    : (isWinner === false && isDraw === false ? "border-amber-400 bg-amber-50/50 shadow-2xl shadow-amber-100" : "border-gray-200 bg-white")
+                  )}
+                >
+                  {((!isCreator && isWinner) || (isCreator && !isWinner && !isDraw)) && (
+                    <div className="absolute top-0 right-0 bg-amber-400 text-amber-900 font-black text-[10px] uppercase tracking-widest px-6 py-2 rounded-bl-3xl">Winner</div>
+                  )}
+                  <div className="flex items-center gap-6 mb-8">
+                    <div className="w-20 h-20 rounded-[32px] bg-white shadow-xl flex items-center justify-center overflow-hidden border-4 border-white shrink-0">
+                      {battle.opponentPhoto ? <img src={battle.opponentPhoto} className="w-full h-full object-cover" /> : <Users size={32} className="text-gray-200" />}
+                    </div>
+                    <div className="text-left flex-1 min-w-0">
+                      <h4 className="font-black text-2xl text-gray-900 truncate tracking-tight">{battle.opponentName || '...'}</h4>
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Player 2</p>
+                    </div>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-7xl font-black text-gray-900 leading-none">{formatNumber(battle.opponentScore)}</span>
+                    <span className="text-lg font-black text-gray-400">সঠিক</span>
+                  </div>
+                </motion.div>
+              </div>
+
+              {/* Reward/XP Notice */}
               <motion.div 
-                animate={isWinner ? { y: [0, -20, 0] } : {}}
-                transition={{ repeat: Infinity, duration: 2 }}
-                className={cn(
-                  "w-32 h-32 rounded-[48px] flex items-center justify-center shadow-2xl relative z-10",
-                  isWinner ? "bg-amber-100 text-amber-600 shadow-amber-100" : 
-                  isDraw ? "bg-indigo-100 text-indigo-600 shadow-indigo-100" : 
-                  "bg-gray-100 text-gray-400 shadow-gray-100"
-                )}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 1 }}
+                className="bg-emerald-50 border border-emerald-100 p-6 rounded-[32px] w-full max-w-lg flex items-center gap-6"
               >
-                {isWinner ? <Trophy size={64} fill="currentColor" /> : isDraw ? <Users size={64} /> : <Zap size={64} />}
+                <div className="w-14 h-14 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-100 shrink-0">
+                  <Star fill="currentColor" size={28} />
+                </div>
+                <div>
+                  <h4 className="text-emerald-900 font-black text-lg">পুরস্কার ও স্বীকৃতি</h4>
+                  <p className="text-emerald-700 font-medium text-sm">
+                    এই ব্যাটেল থেকে আপনি <span className="font-black">{formatNumber(score * 20)} XP</span> এবং আপনার রেটিং আপডেট হয়েছে।
+                  </p>
+                </div>
               </motion.div>
-              <div className={cn(
-                "absolute inset-0 rounded-[48px] blur-3xl opacity-30",
-                isWinner ? "bg-amber-400" : isDraw ? "bg-indigo-400" : "bg-gray-400"
-              )}></div>
-            </div>
 
-            <div className="space-y-4">
-              <h1 className="text-4xl md:text-5xl font-black text-gray-900 tracking-tight">
-                {isWinner ? 'অভিনন্দন! আপনি জয়ী!' : isDraw ? 'ম্যাচ ড্র হয়েছে!' : 'আগামীবার আরও চেষ্টা করুন!'}
-              </h1>
-              <p className="text-gray-500 font-bold text-lg">
-                {isWinner 
-                  ? `আপনি জিতে নিয়েছেন ${formatNumber(battle.stake * 2)}টি কয়েন!` 
-                  : isDraw ? 'আপনার স্টেক করা কয়েন ফেরত দেয়া হয়েছে।' 
-                  : 'আপনি এই ব্যাটলটি হেরে গেছেন।'}
-              </p>
-            </div>
+              {/* Detailed Review Header */}
+              <div className="w-full space-y-8 mt-8">
+                <div className="flex items-center gap-4">
+                  <div className="h-0.5 flex-1 bg-gray-100"></div>
+                  <h3 className="font-black text-gray-400 uppercase tracking-[0.3em] text-[10px]">প্রশ্ন ও উত্তর পর্যালোচনা</h3>
+                  <div className="h-0.5 flex-1 bg-gray-100"></div>
+                </div>
 
-            {/* Results Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl">
-              <div className={cn(
-                "glass-card p-8 rounded-[40px] border-2 relative overflow-hidden",
-                isCreator ? (isWinner ? "border-amber-500 bg-amber-50/50" : isDraw ? "border-indigo-400 bg-indigo-50/50" : "border-gray-200") : 
-                (!isWinner && !isDraw ? "border-amber-500 bg-amber-50/50" : "border-gray-200")
-              )}>
-                {isCreator && isWinner && <div className="absolute top-4 right-4 bg-amber-500 text-white rounded-full p-1 shadow-lg shadow-amber-200"><Trophy size={16} /></div>}
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="w-14 h-14 rounded-2xl bg-white shadow-md flex items-center justify-center overflow-hidden border-2 border-white">
-                    {battle.creatorPhoto ? <img src={battle.creatorPhoto} className="w-full h-full object-cover" /> : <Users size={24} className="text-gray-300" />}
-                  </div>
-                  <div className="text-left">
-                    <h4 className="font-black text-gray-900 truncate max-w-[120px]">{battle.creatorName}</h4>
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Player 1</p>
-                  </div>
-                </div>
-                <div className="flex items-end gap-2">
-                  <span className="text-5xl font-black text-gray-900">{formatNumber(battle.creatorScore)}</span>
-                  <span className="text-sm font-bold text-gray-400 mb-1">সঠিক</span>
-                </div>
-              </div>
-
-              <div className={cn(
-                "glass-card p-8 rounded-[40px] border-2 relative overflow-hidden",
-                !isCreator ? (isWinner ? "border-amber-500 bg-amber-50/50" : isDraw ? "border-indigo-400 bg-indigo-50/50" : "border-gray-200") : 
-                (!isWinner && !isDraw ? "border-amber-500 bg-amber-50/50" : "border-gray-200")
-              )}>
-                {!isCreator && isWinner && <div className="absolute top-4 right-4 bg-amber-500 text-white rounded-full p-1 shadow-lg shadow-amber-200"><Trophy size={16} /></div>}
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="w-14 h-14 rounded-2xl bg-white shadow-md flex items-center justify-center overflow-hidden border-2 border-white">
-                    {battle.opponentPhoto ? <img src={battle.opponentPhoto} className="w-full h-full object-cover" /> : <Users size={24} className="text-gray-300" />}
-                  </div>
-                  <div className="text-left">
-                    <h4 className="font-black text-gray-900 truncate max-w-[120px]">{battle.opponentName || '...'}</h4>
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Player 2</p>
-                  </div>
-                </div>
-                <div className="flex items-end gap-2">
-                  <span className="text-5xl font-black text-gray-900">{formatNumber(battle.opponentScore)}</span>
-                  <span className="text-sm font-bold text-gray-400 mb-1">সঠিক</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Detailed Question Review */}
-            <div className="w-full max-w-4xl space-y-6">
-               <div className="flex items-center gap-3 px-2">
-                  <div className="w-2 h-6 bg-indigo-600 rounded-full"></div>
-                  <h3 className="font-black text-gray-900 uppercase tracking-widest text-sm">প্রশ্ন ও উত্তর পর্যালোচনা</h3>
-               </div>
-               
-               <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-4">
                   {battle.questions.map((q, idx) => {
                     const myAns = answers[idx];
                     const isCorrect = myAns === q.correctAnswer;
                     
                     return (
-                      <div key={idx} className="glass-card p-6 bg-white border-gray-100 rounded-[32px] shadow-sm">
-                        <div className="flex gap-4">
+                      <motion.div 
+                        key={idx} 
+                        initial={{ opacity: 0, x: -10 }}
+                        whileInView={{ opacity: 1, x: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ delay: idx * 0.1 }}
+                        className="glass-card p-8 bg-white border-gray-100 rounded-[40px] shadow-sm hover:shadow-md transition-shadow"
+                      >
+                        <div className="flex gap-6">
                            <div className={cn(
-                             "w-10 h-10 rounded-xl flex items-center justify-center font-black text-white shrink-0 shadow-lg",
+                             "w-14 h-14 rounded-2xl flex items-center justify-center font-black text-white shrink-0 shadow-2xl",
                              isCorrect ? "bg-emerald-500 shadow-emerald-100" : "bg-red-500 shadow-red-100"
                            )}>
                              {idx + 1}
                            </div>
-                           <div className="space-y-3 flex-1">
-                              <p className="font-bold text-gray-900 text-sm md:text-base leading-snug">{q.questionBn}</p>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                 <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100">
-                                    <p className="text-[8px] font-black text-emerald-600 uppercase tracking-widest mb-1">সঠিক উত্তর</p>
-                                    <p className="text-xs font-bold text-emerald-800">{q.optionsBn[q.correctAnswer] as string}</p>
+                           <div className="space-y-4 flex-1">
+                              <p className="font-bold text-gray-900 text-lg md:text-xl leading-snug">{q.questionBn}</p>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                 <div className="p-4 rounded-[24px] bg-emerald-50 border border-emerald-100">
+                                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">সঠিক উত্তর</p>
+                                    <p className="text-sm font-bold text-emerald-800">{q.optionsBn[q.correctAnswer] as string}</p>
                                  </div>
                                  {myAns && !isCorrect && (
-                                   <div className="p-3 rounded-2xl bg-red-50 border border-red-100">
-                                      <p className="text-[8px] font-black text-red-600 uppercase tracking-widest mb-1">আপনার উত্তর</p>
-                                      <p className="text-xs font-bold text-red-800">{q.optionsBn[myAns] as string}</p>
+                                   <div className="p-4 rounded-[24px] bg-red-50 border border-red-100">
+                                      <p className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-1">আপনার উত্তর</p>
+                                      <p className="text-sm font-bold text-red-800">{q.optionsBn[myAns] as string}</p>
                                    </div>
                                  )}
                               </div>
                            </div>
                         </div>
-                      </div>
+                      </motion.div>
                     );
                   })}
-               </div>
-            </div>
+                </div>
+              </div>
 
-            <div className="pt-10 flex flex-col md:flex-row gap-4 w-full max-w-lg">
-              <button 
-                onClick={() => navigate('/battle')}
-                className="flex-1 py-5 bg-white border-2 border-gray-100 rounded-[32px] font-black uppercase text-xs tracking-[0.2em] shadow-xl shadow-indigo-100/50 hover:bg-gray-50 active:scale-95 transition-all flex items-center justify-center gap-3 text-indigo-600"
-              >
-                <RefreshCw size={18} />
-                আবার খেলুন
-              </button>
-              <button 
-                onClick={() => navigate('/dashboard')}
-                className="flex-1 py-5 bg-indigo-600 text-white rounded-[32px] font-black uppercase text-xs tracking-[0.2em] shadow-xl shadow-indigo-100 active:scale-95 transition-all flex items-center justify-center gap-3"
-              >
-                <Home size={18} />
-                হোম পেজ
-              </button>
-            </div>
-          </motion.div>
-        )}
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-6 w-full max-w-xl pb-20 mt-10">
+                <motion.button 
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => navigate('/battle')}
+                  className="flex-1 py-6 bg-white border-2 border-indigo-600 text-indigo-600 rounded-[32px] font-black uppercase text-sm tracking-[0.2em] shadow-xl shadow-indigo-100/40 flex items-center justify-center gap-3"
+                >
+                  <RefreshCw size={20} />
+                  আবার খেলুন
+                </motion.button>
+                <motion.button 
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => navigate('/dashboard')}
+                  className="flex-1 py-6 bg-indigo-600 text-white rounded-[32px] font-black uppercase text-sm tracking-[0.2em] shadow-2xl shadow-indigo-200 flex items-center justify-center gap-3"
+                >
+                  <Home size={20} />
+                  ড্যাশবোর্ড
+                </motion.button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Chat Widget - Shared for both active and completed screens */}
         <div className="fixed bottom-24 right-6 z-[80] md:bottom-10 md:right-10 flex flex-col items-end gap-4">
