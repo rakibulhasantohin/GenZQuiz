@@ -98,7 +98,7 @@ service cloud.firestore {
         (existing().status == 'waiting' && incoming().status == 'active' && 
          incoming().opponentId == request.auth.uid && 
          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'opponentId', 'opponentName', 'opponentPhoto'])) ||
-        // Finalizing or updating scores
+        // Finalizing or updating scores or deducting coins
         (existing().status == 'active' && 
          (request.auth.uid == existing().creatorId || request.auth.uid == existing().opponentId)) ||
         // Claiming prize
@@ -106,6 +106,17 @@ service cloud.firestore {
         isAdmin()
       );
       allow delete: if isAdmin();
+    }
+
+    match /battles/{battleId}/messages/{messageId} {
+      allow read: if isAuthenticated() && (
+        get(/databases/$(database)/documents/battles/$(battleId)).data.creatorId == request.auth.uid ||
+        get(/databases/$(database)/documents/battles/$(battleId)).data.opponentId == request.auth.uid
+      );
+      allow create: if isAuthenticated() && (
+        get(/databases/$(database)/documents/battles/$(battleId)).data.creatorId == request.auth.uid ||
+        get(/databases/$(database)/documents/battles/$(battleId)).data.opponentId == request.auth.uid
+      ) && incoming().senderId == request.auth.uid && incoming().text.size() <= 200;
     }
 
     match /categories/{categoryId} {

@@ -49,6 +49,19 @@
       },
       "required": ["creatorId", "category", "stake", "status"]
     },
+    "BattleMessage": {
+      "title": "BattleMessage",
+      "description": "Chat message within a battle",
+      "type": "object",
+      "properties": {
+        "battleId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["battleId", "senderId", "text"]
+    },
     "Question": {
       "title": "Question",
       "description": "Quiz question details",
@@ -124,6 +137,10 @@
     "/battles/{battleId}": {
       "schema": "Battle",
       "description": "One-on-one quiz battles"
+    },
+    "/battles/{battleId}/messages/{messageId}": {
+      "schema": "BattleMessage",
+      "description": "Messages sent during a battle"
     }
   }
 }

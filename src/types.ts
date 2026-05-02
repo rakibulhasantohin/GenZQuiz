@@ -91,6 +91,15 @@ export interface Category {
   image?: string;
 }
 
+export interface BattleMessage {
+  id: string;
+  battleId: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  createdAt: any;
+}
+
 export interface Battle {
   id: string;
   creatorId: string;
@@ -108,6 +117,7 @@ export interface Battle {
   opponentScore: number;
   creatorCompleted: boolean;
   opponentCompleted: boolean;
+  creatorCoinsDeducted?: boolean;
   creatorPrizeAwarded?: boolean;
   opponentPrizeAwarded?: boolean;
   winnerId?: string | 'draw';

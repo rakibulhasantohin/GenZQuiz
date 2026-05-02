@@ -167,6 +167,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isAdmin = profile?.role === 'admin' || user?.email === 'rakibulhasantohin@gmail.com';
 
+  useEffect(() => {
+    if (!user || !isOnline) return;
+    
+    const updatePresence = async () => {
+      try {
+        await updateDoc(doc(db, 'users', user.uid), {
+          lastActiveAt: serverTimestamp()
+        });
+      } catch (e) {
+        console.error("Error updating presence:", e);
+      }
+    };
+
+    updatePresence();
+    const interval = setInterval(updatePresence, 30000); // Every 30 seconds
+    return () => clearInterval(interval);
+  }, [user, isOnline]);
+
   const claimDailyCoins = async () => {
     if (!profile || !user) return { success: false, message: 'Please login first' };
     
