@@ -28,6 +28,8 @@ const BattleArena: React.FC = () => {
   const [answers, setAnswers] = useState<Record<number, string>>({});
 
   const isCreator = battle?.creatorId === profile?.uid;
+  const myCompleted = isCreator ? battle?.creatorCompleted : battle?.opponentCompleted;
+  const otherCompleted = isCreator ? battle?.opponentCompleted : battle?.creatorCompleted;
 
   // Versus Screen Timer
   useEffect(() => {
@@ -307,7 +309,7 @@ const BattleArena: React.FC = () => {
   }
 
   // Active Gameplay
-  if (battle.status === 'active' && !gameOver) {
+  if (battle.status === 'active' && !gameOver && !myCompleted) {
     if (showVersus) {
       return (
         <div className="fixed inset-0 z-[100] bg-gray-950 flex items-center justify-center overflow-hidden">
@@ -695,14 +697,11 @@ const BattleArena: React.FC = () => {
     );
   }
 
-  // Completed State
-  const myCompleted = isCreator ? battle.creatorCompleted : battle.opponentCompleted;
-  const otherCompleted = isCreator ? battle.opponentCompleted : battle.creatorCompleted;
-
-  if (gameOver || myCompleted) {
+  // Completed or Results State
+  if (gameOver || myCompleted || battle.status === 'completed') {
     const isWinner = battle.winnerId === profile.uid;
     const isDraw = battle.winnerId === 'draw';
-    const isWaitingResult = (isCreator ? !battle.opponentCompleted : !battle.creatorCompleted);
+    const isWaitingResult = battle.status !== 'completed' && (isCreator ? !battle.opponentCompleted : !battle.creatorCompleted);
 
     return (
       <div className="min-h-screen py-10 flex flex-col items-center justify-center space-y-12 relative overflow-hidden bg-white">
