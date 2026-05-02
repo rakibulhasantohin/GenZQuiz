@@ -11,6 +11,7 @@ interface AuthContextType {
   loading: boolean;
   isAdmin: boolean;
   isOnline: boolean;
+  claimDailyCoins: () => Promise<{ success: boolean; message: string }>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -19,6 +20,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   isAdmin: false,
   isOnline: navigator.onLine,
+  claimDailyCoins: async () => ({ success: false, message: 'Not initialized' }),
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -125,6 +127,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             lastDailyUpdate: new Date().toLocaleDateString('en-CA'),
             weeklyPoints: 0,
             lastWeeklyUpdate: getWeekId(),
+            coins: 10,
+            lastDailyCoinClaim: '',
             preferredLanguage: 'bn',
             role: 'user',
             isBlocked: false,
@@ -163,8 +167,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isAdmin = profile?.role === 'admin' || user?.email === 'rakibulhasantohin@gmail.com';
 
+  const claimDailyCoins = async () => {
+    if (!profile || !user) return { success: false, message: 'Please login first' };
+    
+    const today = new Date().toLocaleDateString('en-CA');
+    if (profile.lastDailyCoinClaim === today) {
+      return { success: false, message: 'আপনি আজ ইতিমদ্ধেই আপনার ফ্রি কয়েন নিয়েছেন!' };
+    }
+
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        coins: increment(10),
+        lastDailyCoinClaim: today,
+        updatedAt: new Date().toISOString()
+      });
+      return { success: true, message: 'অভিনন্দন! আপনি ১০টি ফ্রি কয়েন পেয়েছেন!' };
+    } catch (error) {
+      console.error('Error claiming coins:', error);
+      return { success: false, message: 'কয়েন নিতে সমস্যা হয়েছে। আবার চেষ্টা করুন।' };
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading, isAdmin, isOnline }}>
+    <AuthContext.Provider value={{ user, profile, loading, isAdmin, isOnline, claimDailyCoins }}>
       {children}
     </AuthContext.Provider>
   );

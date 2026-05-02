@@ -15,12 +15,39 @@
         "streak": { "type": "integer" },
         "accuracy": { "type": "number" },
         "quizzesPlayed": { "type": "integer" },
+        "coins": { "type": "integer" },
+        "lastDailyCoinClaim": { "type": "string" },
         "preferredLanguage": { "type": "string", "enum": ["bn", "en"] },
         "role": { "type": "string", "enum": ["user", "admin"] },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "email", "name"]
+    },
+    "Battle": {
+      "title": "Battle",
+      "description": "One-on-one battle session between two players",
+      "type": "object",
+      "properties": {
+        "creatorId": { "type": "string" },
+        "creatorName": { "type": "string" },
+        "creatorPhoto": { "type": "string" },
+        "category": { "type": "string" },
+        "categoryNameBn": { "type": "string" },
+        "stake": { "type": "integer" },
+        "status": { "type": "string", "enum": ["waiting", "active", "completed"] },
+        "questions": { "type": "array", "items": { "$ref": "#/entities/Question" } },
+        "creatorScore": { "type": "integer" },
+        "opponentScore": { "type": "integer" },
+        "creatorCompleted": { "type": "boolean" },
+        "opponentCompleted": { "type": "boolean" },
+        "opponentId": { "type": "string" },
+        "opponentName": { "type": "string" },
+        "opponentPhoto": { "type": "string" },
+        "winnerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["creatorId", "category", "stake", "status"]
     },
     "Question": {
       "title": "Question",
@@ -93,6 +120,10 @@
     "/leaderboard/{userId}": {
       "schema": "LeaderboardEntry",
       "description": "Public leaderboard data"
+    },
+    "/battles/{battleId}": {
+      "schema": "Battle",
+      "description": "One-on-one quiz battles"
     }
   }
 }

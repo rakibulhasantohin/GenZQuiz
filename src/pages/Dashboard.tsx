@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Trophy, Zap, Flame, Star, ArrowRight, Play, AlertCircle } from 'lucide-react';
+import { Trophy, Zap, Flame, Star, ArrowRight, Play, AlertCircle, Swords, Coins } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { useCategories } from '../CategoryContext';
 import { formatNumber, cn } from '../lib/utils';
@@ -219,6 +219,38 @@ const Dashboard: React.FC = () => {
             সম্পন্ন
           </div>
         )}
+      </motion.section>
+
+      {/* Battle CTA - New */}
+      <motion.section 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.45 }}
+        className="glass-card p-6 rounded-[32px] bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 text-white relative overflow-hidden group shadow-xl shadow-indigo-200/50"
+      >
+        <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:scale-110 transition-transform duration-700"></div>
+        <div className="relative z-10 flex flex-col sm:flex-row items-center gap-6">
+          <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-[24px] flex items-center justify-center border border-white/20 shadow-inner group-hover:scale-110 group-hover:rotate-6 transition-all shrink-0">
+            <Swords size={32} />
+          </div>
+          <div className="flex-1 text-center sm:text-left">
+            <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
+              <h3 className="text-xl font-black tracking-tight">ফ্রেন্ডস ব্যাটেল এরিনা</h3>
+              <div className="flex items-center gap-1 px-2 py-0.5 bg-amber-400 text-[10px] font-black text-amber-900 rounded-md shadow-sm">
+                <Coins size={10} fill="currentColor" />
+                <span>NEW</span>
+              </div>
+            </div>
+            <p className="text-sm text-indigo-100 font-medium max-w-md">কয়েন বাজি ধরুন এবং সরাসরি অন্য খেলোয়াড়দের সাথে যুদ্ধ করে বড় পুরস্কার জিতুন!</p>
+          </div>
+          <Link
+            to="/battle"
+            className="w-full sm:w-auto px-10 py-4 bg-white text-indigo-700 rounded-2xl font-black text-sm shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2"
+          >
+            ব্যাটেল খেলুন
+            <Zap size={16} fill="currentColor" />
+          </Link>
+        </div>
       </motion.section>
 
       {/* Recommended Categories - Horizontal Scroll on Mobile */}

@@ -19,6 +19,8 @@ export interface UserProfile {
   lastDailyUpdate?: string;
   weeklyPoints: number;
   lastWeeklyUpdate?: string;
+  coins: number;
+  lastDailyCoinClaim?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -87,4 +89,27 @@ export interface Category {
   questionCount?: number;
   order?: number;
   image?: string;
+}
+
+export interface Battle {
+  id: string;
+  creatorId: string;
+  creatorName: string;
+  creatorPhoto?: string;
+  opponentId?: string;
+  opponentName?: string;
+  opponentPhoto?: string;
+  stake: number;
+  status: 'waiting' | 'active' | 'completed' | 'cancelled';
+  category: string;
+  categoryNameBn: string;
+  questions: Question[]; // Embedded for simplicity in matching
+  creatorScore: number;
+  opponentScore: number;
+  creatorCompleted: boolean;
+  opponentCompleted: boolean;
+  creatorPrizeAwarded?: boolean;
+  opponentPrizeAwarded?: boolean;
+  winnerId?: string | 'draw';
+  createdAt: any; // Firestore timestamp
 }

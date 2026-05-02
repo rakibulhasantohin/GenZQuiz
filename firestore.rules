@@ -46,15 +46,30 @@ service cloud.firestore {
              data.correctAnswer in ['A', 'B', 'C', 'D'];
     }
 
+    function isValidBattle(data) {
+      return data.keys().hasAll(['creatorId', 'category', 'stake', 'status', 'questions']) &&
+             data.creatorId is string &&
+             data.stake is int && data.stake >= 0 &&
+             data.status in ['waiting', 'active', 'completed'];
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
 
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == 'user';
-      allow update: if (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data) && 
-                    (request.resource.data.role == resource.data.role || isAdmin());
+      allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().role == 'user';
+      allow update: if (isOwner(userId) || isAdmin()) && 
+                    (incoming().role == existing().role || isAdmin());
       allow delete: if isAdmin();
     }
 
@@ -72,6 +87,25 @@ service cloud.firestore {
     match /leaderboard/{userId} {
       allow read: if true;
       allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+    }
+
+    match /battles/{battleId} {
+      allow list: if isAuthenticated() && resource.data.status == 'waiting';
+      allow get: if isAuthenticated();
+      allow create: if isAuthenticated() && incoming().creatorId == request.auth.uid && isValidBattle(incoming());
+      allow update: if isAuthenticated() && (
+        // Joining: only status and opponent info can change
+        (existing().status == 'waiting' && incoming().status == 'active' && 
+         incoming().opponentId == request.auth.uid && 
+         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'opponentId', 'opponentName', 'opponentPhoto'])) ||
+        // Finalizing or updating scores
+        (existing().status == 'active' && 
+         (request.auth.uid == existing().creatorId || request.auth.uid == existing().opponentId)) ||
+        // Claiming prize
+        (existing().status == 'completed' && (request.auth.uid == existing().creatorId || request.auth.uid == existing().opponentId)) ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
     }
 
     match /categories/{categoryId} {

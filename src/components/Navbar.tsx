@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, LayoutGrid, Trophy, User, Settings, LogOut, WifiOff, RefreshCw } from 'lucide-react';
+import { Home, LayoutGrid, Trophy, User, Settings, LogOut, WifiOff, RefreshCw, Swords, Coins } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { auth } from '../firebase';
-import { cn } from '../lib/utils';
+import { cn, formatNumber } from '../lib/utils';
 import { offlineStorage } from '../services/offlineStorage';
 
 const Navbar: React.FC = () => {
@@ -24,6 +24,7 @@ const Navbar: React.FC = () => {
   const navItems = [
     { path: '/dashboard', icon: Home, label: 'হোম' },
     { path: '/categories', icon: LayoutGrid, label: 'বিভাগ' },
+    { path: '/battle', icon: Swords, label: 'ব্যাটেল' },
     { path: '/leaderboard', icon: Trophy, label: 'লিডারবোর্ড' },
     { path: '/profile', icon: User, label: 'প্রোফাইল' },
   ];
@@ -40,6 +41,20 @@ const Navbar: React.FC = () => {
           </div>
           <span className="text-xl font-bold text-gray-900">GenZQuiz</span>
         </div>
+
+        {profile && (
+          <div className="mb-6 px-2">
+            <div className="p-3 bg-amber-50 rounded-2xl border border-amber-100 flex items-center gap-3">
+              <div className="w-8 h-8 bg-amber-100 text-amber-600 rounded-lg flex items-center justify-center">
+                <Coins size={16} fill="currentColor" />
+              </div>
+              <div>
+                <p className="text-[8px] font-black text-amber-600 uppercase tracking-widest leading-none mb-1">কয়েন ব্যালেন্স</p>
+                <p className="font-black text-gray-900 leading-none">{formatNumber(profile.coins || 0)}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex-1 space-y-1">
           {navItems.map((item) => (

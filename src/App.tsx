@@ -14,6 +14,8 @@ import ProfilePage from './pages/ProfilePage';
 import PublicProfilePage from './pages/PublicProfilePage';
 import AdminPage from './pages/AdminPage';
 import MistakesPage from './pages/MistakesPage';
+import BattlePage from './pages/BattlePage';
+import BattleArena from './pages/BattleArena';
 
 export default function App() {
   return (
@@ -34,6 +36,8 @@ export default function App() {
               <Route path="/user/:userId" element={<PublicProfilePage />} />
               <Route path="/admin" element={<AdminPage />} />
               <Route path="/mistakes" element={<MistakesPage />} />
+              <Route path="/battle" element={<BattlePage />} />
+              <Route path="/battle/:battleId" element={<BattleArena />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />
