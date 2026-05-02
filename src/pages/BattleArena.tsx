@@ -927,16 +927,16 @@ const BattleArena: React.FC = () => {
                              {idx + 1}
                            </div>
                            <div className="space-y-4 flex-1">
-                              <p className="font-bold text-gray-900 text-lg md:text-xl leading-snug">{q.questionBn}</p>
+                              <p className="font-bold text-gray-900 text-lg md:text-xl leading-snug">{q.questionText}</p>
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                  <div className="p-4 rounded-[24px] bg-emerald-50 border border-emerald-100">
                                     <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">সঠিক উত্তর</p>
-                                    <p className="text-sm font-bold text-emerald-800">{q.optionsBn[q.correctAnswer] as string}</p>
+                                    <p className="text-sm font-bold text-emerald-800">{q[`option${q.correctAnswer}` as keyof Question] as string}</p>
                                  </div>
                                  {myAns && !isCorrect && (
                                    <div className="p-4 rounded-[24px] bg-red-50 border border-red-100">
                                       <p className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-1">আপনার উত্তর</p>
-                                      <p className="text-sm font-bold text-red-800">{q.optionsBn[myAns] as string}</p>
+                                      <p className="text-sm font-bold text-red-800">{q[`option${myAns}` as keyof Question] as string}</p>
                                    </div>
                                  )}
                               </div>
