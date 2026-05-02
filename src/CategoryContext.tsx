@@ -3,6 +3,7 @@ import { collection, onSnapshot, addDoc, doc, setDoc, getDoc, writeBatch, delete
 import { db } from './firebase';
 import { Category } from './types';
 import { CATEGORIES as DEFAULT_CATEGORIES } from './constants';
+import { offlineStorage } from './services/offlineStorage';
 
 interface CategoryContextType {
   categories: Category[];
@@ -34,6 +35,15 @@ export const CategoryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Try loading from offline storage first
+    const loadCached = async () => {
+      const cached = await offlineStorage.getCategories();
+      if (cached && cached.data) {
+        setCategories(cached.data);
+      }
+    };
+    loadCached();
+
     // Listen for custom categories
     const unsubscribe = onSnapshot(collection(db, 'categories'), (snapshot) => {
       const customCategories = snapshot.docs.map(doc => ({
@@ -56,6 +66,7 @@ export const CategoryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       merged.sort((a, b) => (a.order || 0) - (b.order || 0));
       
       setCategories(merged);
+      offlineStorage.saveCategories(merged);
     });
 
     // Listen for category counts/settings

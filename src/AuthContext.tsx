@@ -107,10 +107,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (firebaseUser) {
+        // Try to load from offline storage first
+        const cachedProfile = await offlineStorage.getProfile(firebaseUser.uid);
+        if (cachedProfile && !profile) {
+          setProfile(cachedProfile.profile);
+        }
+
         const userDocRef = doc(db, 'users', firebaseUser.uid);
         
         // Initial check and creation if needed
-        let userDoc = await getDoc(userDocRef);
+        let userDoc;
+        try {
+          userDoc = await getDoc(userDocRef);
+        } catch (e) {
+          // If offline or error, we use the cached profile
+          setLoading(false);
+          return;
+        }
         
         // Fallback: If no profile exists for this UID, check if one exists for this EMAIL
         if (!userDoc.exists() && firebaseUser.email) {
@@ -177,6 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (doc.exists()) {
             const data = doc.data() as UserProfile;
             setProfile(data);
+            offlineStorage.saveProfile(firebaseUser.uid, data);
             
             // Auto-grant verified achievement if verified
             if (data.isVerified && !data.achievements?.includes('verified')) {

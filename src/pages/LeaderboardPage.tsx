@@ -9,6 +9,7 @@ import { useAuth } from '../AuthContext';
 import VerifiedBadge from '../components/VerifiedBadge';
 
 import { Link } from 'react-router-dom';
+import { offlineStorage } from '../services/offlineStorage';
 
 const LeaderboardPage: React.FC = () => {
   const { profile } = useAuth();
@@ -26,6 +27,16 @@ const LeaderboardPage: React.FC = () => {
   const currentWeek = getWeekId();
 
   useEffect(() => {
+    // Try to load from offline storage first
+    const loadCached = async () => {
+      const cached = await offlineStorage.getLeaderboard();
+      if (cached && cached.data && cached.data.length > 0) {
+        setEntries(cached.data);
+        if (!navigator.onLine) setLoading(false);
+      }
+    };
+    loadCached();
+
     // Query top 20 for this week
     const q = query(
       collection(db, 'leaderboard'), 
@@ -47,6 +58,7 @@ const LeaderboardPage: React.FC = () => {
         isVerified: d.isVerified
       }));
       setEntries(mappedData);
+      offlineStorage.saveLeaderboard(mappedData);
       setLoading(false);
     });
 

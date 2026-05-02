@@ -10,6 +10,7 @@ import CategoryIcon from '../components/CategoryIcon';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Mistake } from '../types';
+import { offlineStorage } from '../services/offlineStorage';
 
 const Dashboard: React.FC = () => {
   const { profile } = useAuth();
@@ -19,9 +20,23 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     if (profile) {
       const fetchMistakes = async () => {
-        const q = query(collection(db, 'mistakes'), where('userId', '==', profile.uid), limit(5));
-        const snapshot = await getDocs(q);
-        setMistakes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Mistake)));
+        // Try load from cache first
+        const cached = await offlineStorage.getMistakes(profile.uid);
+        if (cached && cached.mistakes) {
+          setMistakes(cached.mistakes);
+        }
+
+        if (navigator.onLine) {
+          try {
+            const q = query(collection(db, 'mistakes'), where('userId', '==', profile.uid), limit(5));
+            const snapshot = await getDocs(q);
+            const fetchedMistakes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Mistake));
+            setMistakes(fetchedMistakes);
+            offlineStorage.saveMistakes(profile.uid, fetchedMistakes);
+          } catch (error) {
+            console.error('Error fetching mistakes:', error);
+          }
+        }
       };
       fetchMistakes();
     }
