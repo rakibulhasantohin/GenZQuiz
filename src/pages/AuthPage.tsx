@@ -7,7 +7,8 @@ import {
   createUserWithEmailAndPassword, 
   signInWithPopup, 
   GoogleAuthProvider,
-  updateProfile
+  updateProfile,
+  fetchSignInMethodsForEmail
 } from 'firebase/auth';
 import { auth } from '../firebase';
 
@@ -29,6 +30,18 @@ const AuthPage: React.FC = () => {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
+        // Checking if account already exists with google
+        try {
+          const methods = await fetchSignInMethodsForEmail(auth, email);
+          if (methods.length > 0 && !methods.includes('password')) {
+             setError('এই ইমেইলটি দিয়ে ইতিমদ্ধেই একটি অ্যাকাউন্ট (যেমনঃ গুগল) আছে। দয়া করে গুগল দিয়ে লগইন করুন অথবা পাসওয়ার্ড রিসেট করে একটি পাসওয়ার্ড সেট করে নিন।');
+             setLoading(false);
+             return;
+          }
+        } catch (e) {
+          // Ignore fetch errors
+        }
+
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         // Update profile with name
         if (userCredential.user) {
@@ -58,7 +71,11 @@ const AuthPage: React.FC = () => {
       await signInWithPopup(auth, provider);
       navigate('/dashboard');
     } catch (err: any) {
-      setError(err.message);
+      if (err.code === 'auth/account-exists-with-different-credential') {
+        setError('এই ইমেইলটি দিয়ে ইতিমদ্ধেই অন্য মাধ্যমে (পাসওয়ার্ড) অ্যাকাউন্ট খোলা আছে। দয়া করে আগে পাসওয়ার্ড দিয়ে লগইন করুন।');
+      } else {
+        setError(err.message);
+      }
     }
   };
 

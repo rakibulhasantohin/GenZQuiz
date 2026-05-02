@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp, onSnapshot, increment, arrayUnion, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, onSnapshot, increment, arrayUnion, updateDoc, collection, query, where, getDocs, limit, deleteDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { UserProfile } from './types';
 import { offlineStorage } from './services/offlineStorage';
@@ -110,7 +110,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const userDocRef = doc(db, 'users', firebaseUser.uid);
         
         // Initial check and creation if needed
-        const userDoc = await getDoc(userDocRef);
+        let userDoc = await getDoc(userDocRef);
+        
+        // Fallback: If no profile exists for this UID, check if one exists for this EMAIL
+        if (!userDoc.exists() && firebaseUser.email) {
+          try {
+            const usersRef = collection(db, 'users');
+            const q = query(usersRef, where('email', '==', firebaseUser.email), limit(1));
+            const emailQuery = await getDocs(q);
+            
+            if (!emailQuery.empty) {
+              const existingDoc = emailQuery.docs[0];
+              const existingData = existingDoc.data() as UserProfile;
+              
+              // Migrate the data to the new UID
+              const migratedProfile: UserProfile = {
+                ...existingData,
+                uid: firebaseUser.uid,
+                updatedAt: new Date().toISOString()
+              };
+              
+              await setDoc(userDocRef, migratedProfile);
+              
+              // Delete old profile if it has a different UID
+              if (existingDoc.id !== firebaseUser.uid) {
+                await deleteDoc(doc(db, 'users', existingDoc.id));
+              }
+              
+              userDoc = await getDoc(userDocRef);
+            }
+          } catch (migrationError) {
+            console.error('Profile migration failed:', migrationError);
+          }
+        }
+
         if (!userDoc.exists()) {
           const newProfile: Partial<UserProfile> = {
             uid: firebaseUser.uid,
