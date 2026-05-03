@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Brain, Trophy, Zap, Globe, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../AuthContext';
+import Logo from '../components/Logo';
 
 const LandingPage: React.FC = () => {
   const { user, loading } = useAuth();
@@ -52,8 +53,9 @@ const LandingPage: React.FC = () => {
       </div>
 
       {/* Hero Section */}
-      <header className="relative pt-16 pb-24 md:pt-28 md:pb-40 px-6">
+      <header className="relative pt-8 pb-24 md:pt-12 md:pb-40 px-6">
         <div className="max-w-5xl mx-auto text-center">
+          <Logo size="md" className="justify-center mb-12 opacity-80" />
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}

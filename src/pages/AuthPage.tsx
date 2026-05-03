@@ -11,6 +11,7 @@ import {
   fetchSignInMethodsForEmail
 } from 'firebase/auth';
 import { auth } from '../firebase';
+import Logo from '../components/Logo';
 
 const AuthPage: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -87,9 +88,7 @@ const AuthPage: React.FC = () => {
         className="w-full max-w-md bg-white rounded-[32px] shadow-xl shadow-gray-200/50 p-8 md:p-10"
       >
         <div className="text-center mb-10">
-          <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-white font-bold text-3xl mx-auto mb-6 shadow-lg shadow-indigo-200">
-            IQ
-          </div>
+          <Logo size="lg" className="justify-center mb-6" iconOnly />
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             {isLogin ? 'আবার স্বাগতম!' : 'নতুন অ্যাকাউন্ট'}
           </h1>

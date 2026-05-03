@@ -5,6 +5,7 @@ import { useAuth } from '../AuthContext';
 import { auth } from '../firebase';
 import { cn, formatNumber } from '../lib/utils';
 import { offlineStorage } from '../services/offlineStorage';
+import Logo from './Logo';
 
 const Navbar: React.FC = () => {
   const { user, profile, isOnline } = useAuth();
@@ -35,12 +36,7 @@ const Navbar: React.FC = () => {
     <>
       {/* Desktop Sidebar */}
       <nav className="hidden md:flex flex-col fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200 p-4 z-50">
-        <div className="flex items-center gap-2 mb-8 px-2">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">
-            GZ
-          </div>
-          <span className="text-xl font-bold text-gray-900">GenZQuiz</span>
-        </div>
+        <Logo className="mb-8 px-2" />
 
         {profile && (
           <div className="mb-6 px-2">
