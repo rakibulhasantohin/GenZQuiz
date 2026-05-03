@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   collection, addDoc, getDocs, deleteDoc, doc, updateDoc, 
-  serverTimestamp, query, where, orderBy, writeBatch, getDoc, setDoc, onSnapshot
+  serverTimestamp, query, where, orderBy, writeBatch, getDoc, setDoc, onSnapshot, increment
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthContext';
@@ -14,7 +14,7 @@ import {
   ShieldAlert, Filter, ChevronDown, BadgeCheck, 
   BarChart3, Users, User, BookOpen, Clock, MoreVertical,
   ThumbsUp, ThumbsDown, Eye, ChevronUp, Edit2, Upload,
-  Image as ImageIcon
+  Image as ImageIcon, Loader2
 } from 'lucide-react';
 import { formatNumber, cn } from '../lib/utils';
 import { Link } from 'react-router-dom';
@@ -77,7 +77,28 @@ const AdminPage: React.FC = () => {
   const [genCount, setGenCount] = useState(5);
   const [genCategory, setGenCategory] = useState('general-knowledge');
   const [bulkProgress, setBulkProgress] = useState(0);
-  const [isResetting, setIsResetting] = useState(false);
+  const [coinEditUser, setCoinEditUser] = useState<{uid: string, name: string, coins: number} | null>(null);
+  const [adjustAmount, setAdjustAmount] = useState(0);
+  const [isAdjusting, setIsAdjusting] = useState(false);
+
+  const handleUpdateCoins = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!coinEditUser) return;
+    setIsAdjusting(true);
+    try {
+      await updateDoc(doc(db, 'users', coinEditUser.uid), {
+        coins: increment(adjustAmount)
+      });
+      alert('কয়েন আপডেট করা হয়েছে।');
+      setCoinEditUser(null);
+      setAdjustAmount(0);
+    } catch (error) {
+      console.error('Error updating coins:', error);
+      alert('কয়েন আপডেট করতে সমস্যা হয়েছে।');
+    } finally {
+      setIsAdjusting(false);
+    }
+  };
 
   useEffect(() => {
     fetchQuestions();
@@ -1018,6 +1039,7 @@ const AdminPage: React.FC = () => {
                 <tr className="bg-gray-50/50 border-b border-gray-100">
                   <th className="px-8 py-6 text-xs font-black text-gray-400 uppercase tracking-widest">ব্যবহারকারী</th>
                   <th className="px-6 py-6 text-xs font-black text-gray-400 uppercase tracking-widest">ইমেইল ও আইডি</th>
+                  <th className="px-6 py-6 text-xs font-black text-gray-400 uppercase tracking-widest text-center">কয়েন</th>
                   <th className="px-6 py-6 text-xs font-black text-gray-400 uppercase tracking-widest text-center">স্ট্যাটাস</th>
                   <th className="px-6 py-6 text-xs font-black text-gray-400 uppercase tracking-widest text-right">অ্যাকশন</th>
                 </tr>
@@ -1067,6 +1089,14 @@ const AdminPage: React.FC = () => {
                         <div className="space-y-1">
                           <p className="text-sm font-bold text-gray-600">{u.email}</p>
                           <p className="text-[8px] font-mono text-gray-400 uppercase tracking-widest">{u.uid}</p>
+                        </div>
+                      </td>
+                      <td className="px-6 py-6 text-center">
+                        <div className="flex flex-col items-center gap-1 group/coin cursor-pointer" onClick={() => setCoinEditUser({ uid: u.uid, name: u.name, coins: u.coins || 0 })}>
+                          <div className="flex items-center gap-1 bg-amber-50 px-3 py-1 rounded-full border border-amber-100 group-hover/coin:bg-amber-100 transition-colors">
+                            <Sparkles size={12} className="text-amber-500" />
+                            <span className="text-xs font-black text-amber-600 font-mono">{formatNumber(u.coins || 0)}</span>
+                          </div>
                         </div>
                       </td>
                       <td className="px-6 py-6 text-center">
@@ -1690,6 +1720,81 @@ const AdminPage: React.FC = () => {
                   হ্যাঁ, ডিলিট করুন
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Coin Edit Modal */}
+      <AnimatePresence>
+        {coinEditUser && (
+          <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-md z-[80] flex items-center justify-center p-6">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white w-full max-w-md rounded-[40px] shadow-2xl p-10 border border-white/20"
+            >
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h2 className="text-2xl font-black text-gray-900 tracking-tight">কয়েন ম্যানেজমেন্ট</h2>
+                  <p className="text-gray-500 font-medium">{coinEditUser.name}</p>
+                </div>
+                <button onClick={() => setCoinEditUser(null)} className="w-10 h-10 flex items-center justify-center text-gray-400 hover:bg-gray-100 rounded-xl transition-all">
+                  <X size={24} />
+                </button>
+              </div>
+
+              <form onSubmit={handleUpdateCoins} className="space-y-6">
+                <div className="bg-amber-50 p-6 rounded-[32px] text-center mb-6">
+                   <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">বর্তমান ব্যালেন্স</p>
+                   <div className="flex items-center justify-center gap-2">
+                      <Sparkles size={20} className="text-amber-500" fill="currentColor" />
+                      <span className="text-4xl font-black text-amber-900">{formatNumber(coinEditUser.coins)}</span>
+                   </div>
+                </div>
+
+                <div className="space-y-4">
+                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">কয়েন যোগ বা বিয়োগ করুন</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      value={adjustAmount}
+                      onChange={(e) => setAdjustAmount(parseInt(e.target.value) || 0)}
+                      className="w-full p-6 bg-gray-50 border-none rounded-3xl focus:ring-2 focus:ring-amber-500 text-2xl font-black text-center"
+                      placeholder="0"
+                    />
+                    <div className="absolute right-6 top-1/2 -translate-y-1/2 text-gray-400 font-black">
+                       Coins
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-center text-gray-400 font-bold">কয়েন কমাতে চাইলে সংখ্যাটির আগে "-" (মাইনাস) দিন। যেমন: -50</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  {[10, 50, 100, 500, -50, -100].map(amt => (
+                    <button 
+                      key={amt}
+                      type="button"
+                      onClick={() => setAdjustAmount(amt)}
+                      className={cn(
+                        "py-3 rounded-xl font-black text-xs transition-all",
+                        amt > 0 ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100" : "bg-red-50 text-red-600 hover:bg-red-100"
+                      )}
+                    >
+                      {amt > 0 ? `+${amt}` : amt}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isAdjusting || adjustAmount === 0}
+                  className="w-full py-6 bg-indigo-600 text-white rounded-[32px] font-black uppercase text-sm tracking-[0.2em] shadow-2xl shadow-indigo-100 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                >
+                  {isAdjusting ? <Loader2 className="animate-spin" /> : <Check />}
+                  কয়েন আপডেট করুন
+                </button>
+              </form>
             </motion.div>
           </div>
         )}

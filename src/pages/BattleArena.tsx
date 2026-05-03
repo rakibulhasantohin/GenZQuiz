@@ -102,19 +102,29 @@ const BattleArena: React.FC = () => {
     return () => unsubscribe();
   }, [battleId, profile]);
 
-  const handleFinish = useCallback(async () => {
+  const handleFinish = useCallback(async (finalScore?: number) => {
     if (!battle || !profile) return;
     setGameOver(true);
 
+    const currentScore = finalScore !== undefined ? finalScore : score;
+
     try {
+      const battleRef = doc(db, 'battles', battle.id);
+      
+      // Get the latest doc to have the most up-to-date scores from other player
+      const docSnap = await getDoc(battleRef);
+      if (!docSnap.exists()) return;
+      
+      const currentBattleState = docSnap.data() as Battle;
+      
       const field = isCreator ? 'creatorScore' : 'opponentScore';
       const statusField = isCreator ? 'creatorCompleted' : 'opponentCompleted';
       
       // Calculate XP: 20 XP per correct answer
-      const earnedXP = score * 20;
+      const earnedXP = currentScore * 20;
 
       const updateData: any = {
-        [field]: score,
+        [field]: currentScore,
         [statusField]: true
       };
 
@@ -126,23 +136,26 @@ const BattleArena: React.FC = () => {
       });
 
       // Check if this completes the battle for the second person
-      const otherCompleted = isCreator ? battle.opponentCompleted : battle.creatorCompleted;
+      const otherCompleted = isCreator ? currentBattleState.opponentCompleted : currentBattleState.creatorCompleted;
       
       if (otherCompleted) {
         updateData.status = 'completed';
         
-        // Calculate winner
-        const myScore = score;
-        const otherScore = isCreator ? battle.opponentScore : battle.creatorScore;
+        // Calculate winner using current score and other player's score from the doc we just fetched
+        const myScore = currentScore;
+        const otherScore = isCreator ? currentBattleState.opponentScore : currentBattleState.creatorScore;
         
         let winnerId: string | 'draw' = 'draw';
-        if (myScore > otherScore) winnerId = profile.uid;
-        else if (otherScore > myScore) winnerId = isCreator ? (battle.opponentId || '') : battle.creatorId;
+        if (myScore > otherScore) {
+          winnerId = profile.uid;
+        } else if (otherScore > myScore) {
+          winnerId = isCreator ? (currentBattleState.opponentId || '') : currentBattleState.creatorId;
+        }
         
         updateData.winnerId = winnerId;
       }
 
-      await updateDoc(doc(db, 'battles', battle.id), updateData);
+      await updateDoc(battleRef, updateData);
     } catch (error) {
       console.error('Error completing battle:', error);
     }
@@ -150,7 +163,7 @@ const BattleArena: React.FC = () => {
 
   // Effect to award prizes when battle is completed
   useEffect(() => {
-    if (!battle || !profile || battle.status !== 'completed') return;
+    if (!battle || !profile || battle.status !== 'completed' || !gameOver) return;
 
     const claimKey = isCreator ? 'creatorPrizeAwarded' : 'opponentPrizeAwarded';
     if (battle[claimKey as keyof Battle]) return;
@@ -181,7 +194,7 @@ const BattleArena: React.FC = () => {
     };
 
     awardPrize();
-  }, [battle?.status, battle?.winnerId, profile?.uid, battle?.id]);
+  }, [battle?.status, battle?.winnerId, profile?.uid, battle?.id, gameOver, isCreator]);
 
   // Effect to deduct creator coins when battle starts
   useEffect(() => {
@@ -226,10 +239,10 @@ const BattleArena: React.FC = () => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [timeLeft, gameOver, battle, isCreator, handleFinish]);
+  }, [timeLeft, gameOver, battle, isCreator]);
 
   const handleAnswer = (answer: string) => {
-    if (selectedAnswer !== null) return;
+    if (selectedAnswer !== null || gameOver) return;
     
     const currentQuestion = battle?.questions[currentQuestionIndex];
     if (!currentQuestion) return;
@@ -238,7 +251,10 @@ const BattleArena: React.FC = () => {
     setAnswers(prev => ({ ...prev, [currentQuestionIndex]: answer }));
     const correct = answer === currentQuestion.correctAnswer;
     setIsCorrect(correct);
-    if (correct) setScore(prev => prev + 1);
+    
+    // Use local updated score for the check to avoid stale closure issues
+    const newScore = correct ? score + 1 : score;
+    if (correct) setScore(newScore);
 
     setTimeout(() => {
       if (currentQuestionIndex < (battle?.questions.length || 0) - 1) {
@@ -247,7 +263,7 @@ const BattleArena: React.FC = () => {
         setIsCorrect(null);
         setTimeLeft(15);
       } else {
-        handleFinish();
+        handleFinish(newScore);
       }
     }, 1000);
   };
@@ -746,7 +762,7 @@ const BattleArena: React.FC = () => {
                   <p className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.2em] mb-2">আপনার স্কোর</p>
                   <div className="flex items-baseline gap-1 justify-center">
                     <span className="text-4xl font-black text-gray-900">{formatNumber(score)}</span>
-                    <span className="text-xs font-bold text-gray-400">/৫</span>
+                    <span className="text-xs font-bold text-gray-400">/{formatNumber(battle.questions.length)}</span>
                   </div>
                 </div>
                 <div className="glass-card p-6 rounded-[32px] bg-gray-50/50 border-gray-100">
