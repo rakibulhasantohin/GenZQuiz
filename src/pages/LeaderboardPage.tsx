@@ -60,6 +60,9 @@ const LeaderboardPage: React.FC = () => {
       setEntries(mappedData);
       offlineStorage.saveLeaderboard(mappedData);
       setLoading(false);
+    }, (error) => {
+      console.error('Error listening to leaderboard:', error);
+      setLoading(false);
     });
 
     // Get current user's rank if they have played this week

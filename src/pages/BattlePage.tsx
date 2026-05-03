@@ -35,6 +35,9 @@ const BattlePage: React.FC = () => {
       const battleData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Battle));
       setBattles(battleData.filter(b => b.creatorId !== profile.uid));
       setLoading(false);
+    }, (error) => {
+      console.error('Error listening to waiting battles:', error);
+      setLoading(false);
     });
 
     return () => unsubscribe();
@@ -62,6 +65,8 @@ const BattlePage: React.FC = () => {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const players = snapshot.docs.map(doc => doc.data() as UserProfile);
       setOnlinePlayers(players);
+    }, (error) => {
+      console.error('Error listening to online players:', error);
     });
 
     return () => unsubscribe();

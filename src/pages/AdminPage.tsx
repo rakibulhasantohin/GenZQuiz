@@ -107,6 +107,8 @@ const AdminPage: React.FC = () => {
   };
 
   useEffect(() => {
+    if (!isAdmin) return;
+    
     fetchQuestions();
     
     // Real-time users listener
@@ -116,10 +118,13 @@ const AdminPage: React.FC = () => {
       const userData = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
       setUsers(userData);
       setUsersLoading(false);
+    }, (error) => {
+      console.error('Admin user list error:', error);
+      setUsersLoading(false);
     });
 
     return () => unsubscribeUsers();
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
     if (categoryCounts) {
