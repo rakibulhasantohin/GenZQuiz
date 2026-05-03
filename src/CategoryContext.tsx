@@ -67,6 +67,10 @@ export const CategoryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       
       setCategories(merged);
       offlineStorage.saveCategories(merged);
+      setLoading(false);
+    }, (error) => {
+      console.error('Error listening to categories:', error);
+      setLoading(false);
     });
 
     // Listen for category counts/settings
@@ -74,6 +78,8 @@ export const CategoryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (doc.exists()) {
         setCategoryCounts(doc.data() as Record<string, number>);
       }
+    }, (error) => {
+      console.error('Error listening to category config:', error);
     });
 
     setLoading(false);

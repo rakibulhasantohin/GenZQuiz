@@ -30,9 +30,7 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && 
         (request.auth.token.email == "rakibulhasantohin@gmail.com" ||
-         request.auth.token.email == "rakibulhasantuhin010@gmail.com" ||
-         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+         request.auth.token.email == "rakibulhasantuhin010@gmail.com");
     }
 
     function isValidUser(data) {
@@ -62,16 +60,21 @@ service cloud.firestore {
       return resource.data;
     }
 
+    function isSameUser(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
 
     match /users/{userId} {
-      allow read: if isAuthenticated();
+      allow get: if isAuthenticated();
+      allow list: if isAuthenticated() && (isAdmin() || resource.data.email == request.auth.token.email);
       allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().role == 'user';
       allow update: if (isOwner(userId) || isAdmin()) && 
                     (incoming().role == existing().role || isAdmin());
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || (isAuthenticated() && existing().email == request.auth.token.email);
     }
 
     match /questions/{questionId} {
@@ -88,6 +91,7 @@ service cloud.firestore {
     match /leaderboard/{userId} {
       allow read: if true;
       allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isAdmin();
     }
 
     match /battles/{battleId} {
@@ -111,6 +115,7 @@ service cloud.firestore {
 
     match /battles/{battleId}/messages/{messageId} {
       allow read: if isAuthenticated() && (
+        isAdmin() ||
         get(/databases/$(database)/documents/battles/$(battleId)).data.creatorId == request.auth.uid ||
         get(/databases/$(database)/documents/battles/$(battleId)).data.opponentId == request.auth.uid
       );
@@ -118,6 +123,13 @@ service cloud.firestore {
         get(/databases/$(database)/documents/battles/$(battleId)).data.creatorId == request.auth.uid ||
         get(/databases/$(database)/documents/battles/$(battleId)).data.opponentId == request.auth.uid
       ) && incoming().senderId == request.auth.uid && incoming().text.size() <= 200;
+      allow delete: if isAdmin();
+    }
+
+    match /notifications/{notifId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
     }
 
     match /categories/{categoryId} {

@@ -77,6 +77,7 @@ const AdminPage: React.FC = () => {
   const [genCount, setGenCount] = useState(5);
   const [genCategory, setGenCategory] = useState('general-knowledge');
   const [bulkProgress, setBulkProgress] = useState(0);
+  const [isResetting, setIsResetting] = useState(false);
 
   useEffect(() => {
     fetchQuestions();
@@ -379,6 +380,47 @@ const AdminPage: React.FC = () => {
     }
   };
 
+  const handleResetAllData = async () => {
+    const confirmation = window.prompt('সব ইউজার ডাটা মুছে ফেলতে চাইলে "RESET ALL DATA" লিখুন (এটি আর ফিরে পাওয়া যাবে না):');
+    if (confirmation !== 'RESET ALL DATA') {
+      alert('সঠিক টেক্সট দিন।');
+      return;
+    }
+
+    setIsResetting(true);
+    try {
+      const collectionsToClear = ['users', 'quiz_sessions', 'leaderboard', 'battles', 'mistakes', 'notifications'];
+      
+      for (const collectionName of collectionsToClear) {
+        const snapshot = await getDocs(collection(db, collectionName));
+        if (snapshot.empty) continue;
+
+        // Batch delete in chunks of 500
+        const chunks = [];
+        const docs = snapshot.docs;
+        for (let i = 0; i < docs.length; i += 500) {
+          chunks.push(docs.slice(i, i + 500));
+        }
+
+        for (const chunk of chunks) {
+          const batch = writeBatch(db);
+          chunk.forEach(d => {
+            batch.delete(d.ref);
+          });
+          await batch.commit();
+        }
+      }
+
+      alert('সব ইউজার ডাটা সফলভাবে মুছে ফেলা হয়েছে। এখন আপনি আবার নতুন করে শুরু করতে পারেন।');
+      window.location.reload();
+    } catch (error: any) {
+      console.error('Error resetting data:', error);
+      alert(`রিসেট করতে সমস্যা হয়েছে: ${error.message}`);
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   const seedMockData = async () => {
     if (!window.confirm('ডেমো ডাটা যুক্ত করতে চান?')) return;
     try {
@@ -667,7 +709,81 @@ const AdminPage: React.FC = () => {
         >
           ইউজার ম্যানেজমেন্ট
         </button>
+        <button
+          onClick={() => setActiveTab('danger' as any)}
+          className={cn(
+            "px-6 py-3 rounded-xl font-black text-sm transition-all",
+            activeTab === ('danger' as any) ? "bg-red-600 text-white shadow-md" : "text-red-500 hover:text-red-700"
+          )}
+        >
+          ডেঞ্জার জোন
+        </button>
       </div>
+
+      {activeTab === 'danger' as any && (
+        <div className="space-y-8 max-w-4xl">
+          <div className="bg-red-50 border-2 border-red-100 rounded-[32px] p-8">
+            <div className="flex items-start gap-6 mb-8">
+              <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center shrink-0">
+                <ShieldAlert size={32} />
+              </div>
+              <div>
+                <h2 className="text-2xl font-black text-gray-900 mb-2">ফুল সিস্টেম রিসেট</h2>
+                <p className="text-gray-600 font-medium leading-relaxed">
+                  এই বাটনটি ক্লিক করলে ডাটাবেজের সকল ইউজার প্রোফাইল, গেম সেশন, লিডারবোর্ড এবং মেসেজ মুছে ফেলা হবে। শুধু প্রশ্ন এবং ক্যাটাগরিগুলো থেকে যাবে। এই কাজটি আর ফিরে পাওয়া যাবে না।
+                </p>
+              </div>
+            </div>
+            
+            <div className="bg-white rounded-2xl p-6 border-2 border-red-50 mb-8">
+              <h3 className="text-sm font-black text-gray-900 mb-4 uppercase tracking-wider">কি কি মুছে যাবে?</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {[
+                  'সব ইউজার প্রোফাইল (নাম, ইমেইল, পয়েন্ট)',
+                  'কুইজ সেশন ও হিস্ট্রি',
+                  'সাপ্তাহিক ও গ্লোবাল লিডারবোর্ড',
+                  'সব ব্যাটল ও মেসেজ',
+                  'ভুল উত্তরের ডাটাবেজ',
+                  'সব নোটিফিকেশন'
+                ].map((item, i) => (
+                  <div key={i} className="flex items-center gap-3 text-sm font-bold text-gray-500">
+                    <div className="w-2 h-2 bg-red-400 rounded-full" />
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <button 
+              onClick={handleResetAllData}
+              disabled={isResetting}
+              className="w-full py-5 bg-red-600 hover:bg-red-700 disabled:bg-gray-300 text-white rounded-2xl font-black text-lg transition-all shadow-xl shadow-red-200 flex items-center justify-center gap-3"
+            >
+              {isResetting ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/20 border-t-white" />
+                  ডাটা রিসেট হচ্ছে...
+                </>
+              ) : (
+                <>
+                  <Trash2 size={24} />
+                  সব ইউজার ডাটা রিসেট করুন
+                </>
+              )}
+            </button>
+          </div>
+          
+          <div className="bg-indigo-50 border-2 border-indigo-100 rounded-[32px] p-8">
+            <div className="flex items-center gap-4 mb-4">
+              <Database className="text-indigo-600" />
+              <h2 className="text-xl font-black text-gray-900">অ্যাডমিন নোট</h2>
+            </div>
+            <p className="text-sm text-indigo-600/80 font-bold leading-relaxed">
+              ডাটা রিসেট করার পর আপনাকে আবার লগইন করতে হবে। যেহেতু আপনার ইমেইলটি অ্যাডমিন হিসেবে তালিকাভুক্ত, তাই লগইন করার পর আপনি স্বয়ংক্রিয়ভাবে একটি নতুন অ্যাডমিন প্রোফাইল পেয়ে যাবেন।
+            </p>
+          </div>
+        </div>
+      )}
 
       {activeTab === 'questions' && (
         <>

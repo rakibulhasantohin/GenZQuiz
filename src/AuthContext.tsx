@@ -55,7 +55,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const today = new Date().toLocaleDateString('en-CA');
         const currentWeek = getWeekId();
 
-        await updateDoc(userDocRef, {
+        await setDoc(userDocRef, {
           totalPoints: increment(scoreData.score),
           xp: increment(scoreData.xpEarned),
           quizzesPlayed: increment(1),
@@ -70,7 +70,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             totalQuestions: scoreData.totalQuestions,
             timestamp: new Date(scoreData.timestamp).toISOString(),
           })
-        });
+        }, { merge: true });
 
         await offlineStorage.removePendingScore(scoreData.id);
       } catch (error) {
@@ -100,6 +100,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
+        console.log('Auth state changed:', firebaseUser?.uid);
         setUser(firebaseUser);
         
         if (unsubscribeProfile) {
@@ -109,119 +110,100 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (firebaseUser) {
           // Try to load from offline storage first
-          const cachedProfile = await offlineStorage.getProfile(firebaseUser.uid);
+          const profilePromise = offlineStorage.getProfile(firebaseUser.uid);
+          const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000));
+          
+          const cachedProfile = await Promise.race([profilePromise, timeoutPromise]);
           if (cachedProfile && !profile) {
             setProfile(cachedProfile.profile);
           }
 
           const userDocRef = doc(db, 'users', firebaseUser.uid);
           
-          // Initial check and creation if needed
-          let userDoc;
-          try {
-            userDoc = await getDoc(userDocRef);
-          } catch (e) {
-            console.error('Error fetching user doc:', e);
-            // If offline or error, we use the cached profile
-            setLoading(false);
-            return;
-          }
-          
-          // Fallback: If no profile exists for this UID, check if one exists for this EMAIL
-          if (!userDoc.exists() && firebaseUser.email) {
-            try {
-              const usersRef = collection(db, 'users');
-              const q = query(usersRef, where('email', '==', firebaseUser.email), limit(1));
-              const emailQuery = await getDocs(q);
-              
-              if (!emailQuery.empty) {
-                const existingDoc = emailQuery.docs[0];
-                const existingData = existingDoc.data() as UserProfile;
-                
-                // Migrate the data to the new UID
-                const migratedProfile: UserProfile = {
-                  ...existingData,
-                  uid: firebaseUser.uid,
-                  updatedAt: new Date().toISOString()
-                };
-                
-                await setDoc(userDocRef, migratedProfile);
-                
-                // Delete old profile if it has a different UID
-                if (existingDoc.id !== firebaseUser.uid) {
-                  try {
-                    await deleteDoc(doc(db, 'users', existingDoc.id));
-                  } catch (deleteError) {
-                    console.warn('Failed to delete old profile doc during migration:', deleteError);
-                    // This is non-blocking for the user
-                  }
-                }
-                
-                userDoc = await getDoc(userDocRef);
-              }
-            } catch (migrationError) {
-              console.error('Profile migration failed:', migrationError);
-            }
-          }
-
-          if (userDoc.exists()) {
-            setProfile(userDoc.data() as UserProfile);
-          }
-
-          if (!userDoc.exists()) {
-            const newProfile: UserProfile = {
-              uid: firebaseUser.uid,
-              name: firebaseUser.displayName || 'User',
-              email: firebaseUser.email || '',
-              photoURL: firebaseUser.photoURL || '',
-              totalPoints: 0,
-              xp: 0,
-              level: 1,
-              streak: 0,
-              accuracy: 0,
-              quizzesPlayed: 0,
-              dailyPoints: 0,
-              lastDailyUpdate: new Date().toLocaleDateString('en-CA'),
-              weeklyPoints: 0,
-              lastWeeklyUpdate: getWeekId(),
-              coins: 10,
-              lastDailyCoinClaim: '',
-              preferredLanguage: 'bn',
-              role: 'user',
-              isBlocked: false,
-              isVerified: false,
-              achievements: [],
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            };
-            await setDoc(userDocRef, newProfile);
-            setProfile(newProfile);
-          }
-
-          // Listen for real-time updates
-          unsubscribeProfile = onSnapshot(userDocRef, (doc) => {
-            if (doc.exists()) {
-              const data = doc.data() as UserProfile;
+          // Use onSnapshot for real-time profile
+          unsubscribeProfile = onSnapshot(userDocRef, (docSnap) => {
+            if (docSnap.exists()) {
+              const data = docSnap.data() as UserProfile;
               setProfile(data);
               offlineStorage.saveProfile(firebaseUser.uid, data);
-              
-              // Auto-grant verified achievement if verified
-              if (data.isVerified && !data.achievements?.includes('verified')) {
-                updateDoc(userDocRef, {
-                  achievements: arrayUnion('verified')
-                }).catch(console.error);
-              }
+            } else if (firebaseUser.email) {
+              // Only create if it definitely doesn't exist and we're not in the middle of a migration check
+              console.log('Profile doc does not exist, initializing...');
+              initializeProfile(firebaseUser, userDocRef);
             }
+            setLoading(false);
+          }, (error) => {
+            console.error('Profile snapshot error:', error);
+            setLoading(false);
           });
+
+          // Wait a bit for the first snapshot, but don't hang forever
+          setTimeout(() => setLoading(false), 3000);
         } else {
           setProfile(null);
+          setLoading(false);
         }
       } catch (error) {
         console.error('Auth state change error:', error);
-      } finally {
         setLoading(false);
       }
     });
+
+    const initializeProfile = async (firebaseUser: User, userDocRef: any) => {
+      try {
+        // Fallback: If no profile exists for this UID, check if one exists for this EMAIL
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('email', '==', firebaseUser.email), limit(1));
+        const emailQuery = await getDocs(q);
+        
+        if (!emailQuery.empty) {
+          const existingDoc = emailQuery.docs[0];
+          const existingData = existingDoc.data() as UserProfile;
+          
+          if (existingDoc.id !== firebaseUser.uid) {
+            console.log('Migrating profile from', existingDoc.id, 'to', firebaseUser.uid);
+            const migratedProfile: UserProfile = {
+              ...existingData,
+              uid: firebaseUser.uid,
+              updatedAt: new Date().toISOString()
+            };
+            await setDoc(userDocRef, migratedProfile);
+            await deleteDoc(doc(db, 'users', existingDoc.id)).catch(console.warn);
+            return;
+          }
+        }
+
+        // Create truly new profile
+        const newProfile: UserProfile = {
+          uid: firebaseUser.uid,
+          name: firebaseUser.displayName || 'User',
+          email: firebaseUser.email || '',
+          photoURL: firebaseUser.photoURL || '',
+          totalPoints: 0,
+          xp: 0,
+          level: 1,
+          streak: 0,
+          accuracy: 0,
+          quizzesPlayed: 0,
+          dailyPoints: 0,
+          lastDailyUpdate: new Date().toLocaleDateString('en-CA'),
+          weeklyPoints: 0,
+          lastWeeklyUpdate: getWeekId(),
+          coins: 10,
+          lastDailyCoinClaim: '',
+          preferredLanguage: 'bn',
+          role: 'user',
+          isBlocked: false,
+          isVerified: false,
+          achievements: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        await setDoc(userDocRef, newProfile);
+      } catch (e) {
+        console.error('Error in initializeProfile:', e);
+      }
+    };
 
     return () => {
       unsubscribeAuth();
@@ -235,10 +217,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user || !isOnline) return;
     
     const updatePresence = async () => {
+      if (!profile) return; // Wait for profile to be ready
       try {
-        await updateDoc(doc(db, 'users', user.uid), {
+        await setDoc(doc(db, 'users', user.uid), {
           lastActiveAt: serverTimestamp()
-        });
+        }, { merge: true });
       } catch (e) {
         console.error("Error updating presence:", e);
       }
@@ -259,11 +242,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
+      await setDoc(userRef, {
         coins: increment(10),
         lastDailyCoinClaim: today,
         updatedAt: new Date().toISOString()
-      });
+      }, { merge: true });
       return { success: true, message: 'অভিনন্দন! আপনি ১০টি ফ্রি কয়েন পেয়েছেন!' };
     } catch (error) {
       console.error('Error claiming coins:', error);
