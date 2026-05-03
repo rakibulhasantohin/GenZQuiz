@@ -99,111 +99,128 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let unsubscribeProfile: (() => void) | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-      
-      if (unsubscribeProfile) {
-        unsubscribeProfile();
-        unsubscribeProfile = null;
-      }
-
-      if (firebaseUser) {
-        // Try to load from offline storage first
-        const cachedProfile = await offlineStorage.getProfile(firebaseUser.uid);
-        if (cachedProfile && !profile) {
-          setProfile(cachedProfile.profile);
+      try {
+        setUser(firebaseUser);
+        
+        if (unsubscribeProfile) {
+          unsubscribeProfile();
+          unsubscribeProfile = null;
         }
 
-        const userDocRef = doc(db, 'users', firebaseUser.uid);
-        
-        // Initial check and creation if needed
-        let userDoc;
-        try {
-          userDoc = await getDoc(userDocRef);
-        } catch (e) {
-          // If offline or error, we use the cached profile
-          setLoading(false);
-          return;
-        }
-        
-        // Fallback: If no profile exists for this UID, check if one exists for this EMAIL
-        if (!userDoc.exists() && firebaseUser.email) {
+        if (firebaseUser) {
+          // Try to load from offline storage first
+          const cachedProfile = await offlineStorage.getProfile(firebaseUser.uid);
+          if (cachedProfile && !profile) {
+            setProfile(cachedProfile.profile);
+          }
+
+          const userDocRef = doc(db, 'users', firebaseUser.uid);
+          
+          // Initial check and creation if needed
+          let userDoc;
           try {
-            const usersRef = collection(db, 'users');
-            const q = query(usersRef, where('email', '==', firebaseUser.email), limit(1));
-            const emailQuery = await getDocs(q);
-            
-            if (!emailQuery.empty) {
-              const existingDoc = emailQuery.docs[0];
-              const existingData = existingDoc.data() as UserProfile;
+            userDoc = await getDoc(userDocRef);
+          } catch (e) {
+            console.error('Error fetching user doc:', e);
+            // If offline or error, we use the cached profile
+            setLoading(false);
+            return;
+          }
+          
+          // Fallback: If no profile exists for this UID, check if one exists for this EMAIL
+          if (!userDoc.exists() && firebaseUser.email) {
+            try {
+              const usersRef = collection(db, 'users');
+              const q = query(usersRef, where('email', '==', firebaseUser.email), limit(1));
+              const emailQuery = await getDocs(q);
               
-              // Migrate the data to the new UID
-              const migratedProfile: UserProfile = {
-                ...existingData,
-                uid: firebaseUser.uid,
-                updatedAt: new Date().toISOString()
-              };
-              
-              await setDoc(userDocRef, migratedProfile);
-              
-              // Delete old profile if it has a different UID
-              if (existingDoc.id !== firebaseUser.uid) {
-                await deleteDoc(doc(db, 'users', existingDoc.id));
+              if (!emailQuery.empty) {
+                const existingDoc = emailQuery.docs[0];
+                const existingData = existingDoc.data() as UserProfile;
+                
+                // Migrate the data to the new UID
+                const migratedProfile: UserProfile = {
+                  ...existingData,
+                  uid: firebaseUser.uid,
+                  updatedAt: new Date().toISOString()
+                };
+                
+                await setDoc(userDocRef, migratedProfile);
+                
+                // Delete old profile if it has a different UID
+                if (existingDoc.id !== firebaseUser.uid) {
+                  try {
+                    await deleteDoc(doc(db, 'users', existingDoc.id));
+                  } catch (deleteError) {
+                    console.warn('Failed to delete old profile doc during migration:', deleteError);
+                    // This is non-blocking for the user
+                  }
+                }
+                
+                userDoc = await getDoc(userDocRef);
               }
+            } catch (migrationError) {
+              console.error('Profile migration failed:', migrationError);
+            }
+          }
+
+          if (userDoc.exists()) {
+            setProfile(userDoc.data() as UserProfile);
+          }
+
+          if (!userDoc.exists()) {
+            const newProfile: UserProfile = {
+              uid: firebaseUser.uid,
+              name: firebaseUser.displayName || 'User',
+              email: firebaseUser.email || '',
+              photoURL: firebaseUser.photoURL || '',
+              totalPoints: 0,
+              xp: 0,
+              level: 1,
+              streak: 0,
+              accuracy: 0,
+              quizzesPlayed: 0,
+              dailyPoints: 0,
+              lastDailyUpdate: new Date().toLocaleDateString('en-CA'),
+              weeklyPoints: 0,
+              lastWeeklyUpdate: getWeekId(),
+              coins: 10,
+              lastDailyCoinClaim: '',
+              preferredLanguage: 'bn',
+              role: 'user',
+              isBlocked: false,
+              isVerified: false,
+              achievements: [],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+            await setDoc(userDocRef, newProfile);
+            setProfile(newProfile);
+          }
+
+          // Listen for real-time updates
+          unsubscribeProfile = onSnapshot(userDocRef, (doc) => {
+            if (doc.exists()) {
+              const data = doc.data() as UserProfile;
+              setProfile(data);
+              offlineStorage.saveProfile(firebaseUser.uid, data);
               
-              userDoc = await getDoc(userDocRef);
+              // Auto-grant verified achievement if verified
+              if (data.isVerified && !data.achievements?.includes('verified')) {
+                updateDoc(userDocRef, {
+                  achievements: arrayUnion('verified')
+                }).catch(console.error);
+              }
             }
-          } catch (migrationError) {
-            console.error('Profile migration failed:', migrationError);
-          }
+          });
+        } else {
+          setProfile(null);
         }
-
-        if (!userDoc.exists()) {
-          const newProfile: Partial<UserProfile> = {
-            uid: firebaseUser.uid,
-            name: firebaseUser.displayName || 'User',
-            email: firebaseUser.email || '',
-            photoURL: firebaseUser.photoURL || '',
-            totalPoints: 0,
-            xp: 0,
-            level: 1,
-            streak: 0,
-            accuracy: 0,
-            quizzesPlayed: 0,
-            dailyPoints: 0,
-            lastDailyUpdate: new Date().toLocaleDateString('en-CA'),
-            weeklyPoints: 0,
-            lastWeeklyUpdate: getWeekId(),
-            coins: 10,
-            lastDailyCoinClaim: '',
-            preferredLanguage: 'bn',
-            role: 'user',
-            isBlocked: false,
-            isVerified: false,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          };
-          await setDoc(userDocRef, newProfile);
-        }
-
-        // Listen for real-time updates
-        unsubscribeProfile = onSnapshot(userDocRef, (doc) => {
-          if (doc.exists()) {
-            const data = doc.data() as UserProfile;
-            setProfile(data);
-            offlineStorage.saveProfile(firebaseUser.uid, data);
-            
-            // Auto-grant verified achievement if verified
-            if (data.isVerified && !data.achievements?.includes('verified')) {
-              updateDoc(userDocRef, {
-                achievements: arrayUnion('verified')
-              }).catch(console.error);
-            }
-          }
-        });
-      } else {
-        setProfile(null);
+      } catch (error) {
+        console.error('Auth state change error:', error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => {
