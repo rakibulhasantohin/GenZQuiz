@@ -212,7 +212,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const isAdmin = profile?.role === 'admin' || user?.email === 'rakibulhasantohin@gmail.com';
+  const isAdmin = profile?.role === 'admin' || user?.email === 'rakibulhasantohin@gmail.com' || user?.email === 'rakibulhasantuhin010@gmail.com';
 
   useEffect(() => {
     if (!user || !isOnline) return;

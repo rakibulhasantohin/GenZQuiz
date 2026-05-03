@@ -2,7 +2,7 @@ import { openDB, IDBPDatabase } from 'idb';
 import { Question } from '../types';
 
 const DB_NAME = 'quiz-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 interface QuizDB {
   questions: {
