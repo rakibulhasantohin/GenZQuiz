@@ -1,11 +1,26 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Brain, Trophy, Zap, Globe, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 
 const LandingPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!loading && user) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [user, loading, navigate]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#fcfdfc]">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#006a4e]/20 border-t-[#006a4e]"></div>
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen bg-[#fcfdfc] text-gray-900 overflow-hidden relative">
       {/* Rickshaw Art Inspired Background Elements */}
