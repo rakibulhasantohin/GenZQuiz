@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { doc, onSnapshot, updateDoc, increment, serverTimestamp, collection, addDoc, query, orderBy, limit } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, increment, serverTimestamp, collection, addDoc, query, orderBy, limit, runTransaction, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { Battle, Question, BattleMessage } from '../types';
@@ -103,63 +103,65 @@ const BattleArena: React.FC = () => {
   }, [battleId, profile]);
 
   const handleFinish = useCallback(async (finalScore?: number) => {
-    if (!battle || !profile) return;
+    if (!battle || !profile || gameOver) return;
+    
+    // Set gameOver optimistically to prevent double execution
     setGameOver(true);
-
     const currentScore = finalScore !== undefined ? finalScore : score;
 
     try {
       const battleRef = doc(db, 'battles', battle.id);
+      const userRef = doc(db, 'users', profile.uid);
       
-      // Get the latest doc to have the most up-to-date scores from other player
-      const docSnap = await getDoc(battleRef);
-      if (!docSnap.exists()) return;
-      
-      const currentBattleState = docSnap.data() as Battle;
-      
-      const field = isCreator ? 'creatorScore' : 'opponentScore';
-      const statusField = isCreator ? 'creatorCompleted' : 'opponentCompleted';
-      
-      // Calculate XP: 20 XP per correct answer
+      // Atomic completion and winner calculation using a Transaction
+      await runTransaction(db, async (transaction) => {
+        const bSnap = await transaction.get(battleRef);
+        if (!bSnap.exists()) return;
+        
+        const bData = bSnap.data() as Battle;
+        const field = isCreator ? 'creatorScore' : 'opponentScore';
+        const completedField = isCreator ? 'creatorCompleted' : 'opponentCompleted';
+        
+        // Return if this field is already set to prevent redundant updates
+        if (bData[completedField]) return;
+
+        const updateData: any = {
+          [field]: currentScore,
+          [completedField]: true
+        };
+
+        const otherCompleted = isCreator ? bData.opponentCompleted : bData.creatorCompleted;
+        
+        if (otherCompleted) {
+          updateData.status = 'completed';
+          const myScore = currentScore;
+          const otherScore = isCreator ? (bData.opponentScore || 0) : (bData.creatorScore || 0);
+          
+          let winnerId: string | 'draw' = 'draw';
+          if (myScore > otherScore) {
+            winnerId = profile.uid;
+          } else if (otherScore > myScore) {
+            winnerId = isCreator ? (bData.opponentId || '') : bData.creatorId;
+          }
+          updateData.winnerId = winnerId;
+        }
+
+        transaction.update(battleRef, updateData);
+      });
+
+      // Update XP for user
       const earnedXP = currentScore * 20;
-
-      const updateData: any = {
-        [field]: currentScore,
-        [statusField]: true
-      };
-
-      // Update user profile with XP and Points safely
-      await updateDoc(doc(db, 'users', profile.uid), {
+      await updateDoc(userRef, {
         xp: increment(earnedXP),
         totalPoints: increment(earnedXP),
         quizzesPlayed: increment(1)
       });
-
-      // Check if this completes the battle for the second person
-      const otherCompleted = isCreator ? currentBattleState.opponentCompleted : currentBattleState.creatorCompleted;
-      
-      if (otherCompleted) {
-        updateData.status = 'completed';
-        
-        // Calculate winner using current score and other player's score from the doc we just fetched
-        const myScore = currentScore;
-        const otherScore = isCreator ? currentBattleState.opponentScore : currentBattleState.creatorScore;
-        
-        let winnerId: string | 'draw' = 'draw';
-        if (myScore > otherScore) {
-          winnerId = profile.uid;
-        } else if (otherScore > myScore) {
-          winnerId = isCreator ? (currentBattleState.opponentId || '') : currentBattleState.creatorId;
-        }
-        
-        updateData.winnerId = winnerId;
-      }
-
-      await updateDoc(battleRef, updateData);
     } catch (error) {
       console.error('Error completing battle:', error);
+      // If something goes wrong, we might need a way to retry, 
+      // but for now, we minimize damage by having setGameOver(true).
     }
-  }, [battle, profile, score, isCreator]);
+  }, [battle, profile, score, isCreator, gameOver]);
 
   // Effect to award prizes when battle is completed
   useEffect(() => {
@@ -239,7 +241,7 @@ const BattleArena: React.FC = () => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [timeLeft, gameOver, battle, isCreator]);
+  }, [timeLeft, gameOver, battle, isCreator, handleFinish, currentQuestionIndex]);
 
   const handleAnswer = (answer: string) => {
     if (selectedAnswer !== null || gameOver) return;
@@ -860,7 +862,9 @@ const BattleArena: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-7xl font-black text-gray-900 leading-none">{formatNumber(battle.creatorScore)}</span>
+                    <span className="text-7xl font-black text-gray-900 leading-none">
+                      {isCreator ? formatNumber(score) : formatNumber(battle.creatorScore || 0)}
+                    </span>
                     <span className="text-lg font-black text-gray-400">সঠিক</span>
                   </div>
                 </motion.div>
@@ -889,7 +893,9 @@ const BattleArena: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-7xl font-black text-gray-900 leading-none">{formatNumber(battle.opponentScore)}</span>
+                    <span className="text-7xl font-black text-gray-900 leading-none">
+                      {!isCreator ? formatNumber(score) : formatNumber(battle.opponentScore || 0)}
+                    </span>
                     <span className="text-lg font-black text-gray-400">সঠিক</span>
                   </div>
                 </motion.div>
@@ -908,7 +914,7 @@ const BattleArena: React.FC = () => {
                 <div>
                   <h4 className="text-emerald-900 font-black text-lg">পুরস্কার ও স্বীকৃতি</h4>
                   <p className="text-emerald-700 font-medium text-sm">
-                    এই ব্যাটেল থেকে আপনি <span className="font-black">{formatNumber(score * 20)} XP</span> এবং আপনার রেটিং আপডেট হয়েছে।
+                    এই ব্যাটেল থেকে আপনি <span className="font-black">{formatNumber((isCreator ? (battle.creatorScore || 0) : (battle.opponentScore || 0)) * 20)} XP</span> এবং আপনার রেটিং আপডেট হয়েছে।
                   </p>
                 </div>
               </motion.div>

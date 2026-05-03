@@ -80,14 +80,19 @@ const AdminPage: React.FC = () => {
   const [coinEditUser, setCoinEditUser] = useState<{uid: string, name: string, coins: number} | null>(null);
   const [adjustAmount, setAdjustAmount] = useState(0);
   const [isAdjusting, setIsAdjusting] = useState(false);
+  const [editMode, setEditMode] = useState<'adjust' | 'set'>('adjust');
 
   const handleUpdateCoins = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!coinEditUser) return;
     setIsAdjusting(true);
     try {
+      const updateData = editMode === 'adjust' 
+        ? { coins: increment(adjustAmount) }
+        : { coins: adjustAmount };
+
       await updateDoc(doc(db, 'users', coinEditUser.uid), {
-        coins: increment(adjustAmount)
+        ...updateData
       });
       alert('কয়েন আপডেট করা হয়েছে।');
       setCoinEditUser(null);
@@ -1753,8 +1758,33 @@ const AdminPage: React.FC = () => {
                    </div>
                 </div>
 
+                <div className="flex bg-gray-100 p-1 rounded-2xl w-full mb-6">
+                  <button
+                    type="button"
+                    onClick={() => setEditMode('adjust')}
+                    className={cn(
+                      "flex-1 py-3 rounded-xl font-black text-xs transition-all",
+                      editMode === 'adjust' ? "bg-white text-indigo-600 shadow-md" : "text-gray-500"
+                    )}
+                  >
+                    সেটিংস (অ্যাড/সাব)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditMode('set')}
+                    className={cn(
+                      "flex-1 py-3 rounded-xl font-black text-xs transition-all",
+                      editMode === 'set' ? "bg-white text-indigo-600 shadow-md" : "text-gray-500"
+                    )}
+                  >
+                    সরাসরি সেট করুন
+                  </button>
+                </div>
+
                 <div className="space-y-4">
-                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">কয়েন যোগ বা বিয়োগ করুন</label>
+                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
+                    {editMode === 'adjust' ? 'কয়েন যোগ বা বিয়োগ করুন' : 'নতুন কয়েন ব্যালেন্স সেট করুন'}
+                  </label>
                   <div className="relative">
                     <input
                       type="number"
@@ -1767,24 +1797,28 @@ const AdminPage: React.FC = () => {
                        Coins
                     </div>
                   </div>
-                  <p className="text-[10px] text-center text-gray-400 font-bold">কয়েন কমাতে চাইলে সংখ্যাটির আগে "-" (মাইনাস) দিন। যেমন: -50</p>
+                  {editMode === 'adjust' && (
+                    <p className="text-[10px] text-center text-gray-400 font-bold">কয়েন কমাতে চাইলে সংখ্যাটির আগে "-" (মাইনাস) দিন। যেমন: -50</p>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  {[10, 50, 100, 500, -50, -100].map(amt => (
-                    <button 
-                      key={amt}
-                      type="button"
-                      onClick={() => setAdjustAmount(amt)}
-                      className={cn(
-                        "py-3 rounded-xl font-black text-xs transition-all",
-                        amt > 0 ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100" : "bg-red-50 text-red-600 hover:bg-red-100"
-                      )}
-                    >
-                      {amt > 0 ? `+${amt}` : amt}
-                    </button>
-                  ))}
-                </div>
+                {editMode === 'adjust' && (
+                  <div className="grid grid-cols-2 gap-4 mt-6">
+                    {[10, 50, 100, 500, -50, -100].map(amt => (
+                      <button 
+                        key={amt}
+                        type="button"
+                        onClick={() => setAdjustAmount(amt)}
+                        className={cn(
+                          "py-3 rounded-xl font-black text-xs transition-all",
+                          amt > 0 ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100" : "bg-red-50 text-red-600 hover:bg-red-100"
+                        )}
+                      >
+                        {amt > 0 ? `+${amt}` : amt}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 <button
                   type="submit"
