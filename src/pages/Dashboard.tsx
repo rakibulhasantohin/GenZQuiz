@@ -70,19 +70,19 @@ const Dashboard: React.FC = () => {
           <p className="text-sm text-gray-500 font-medium">আপনার আজকের কুইজ যাত্রা শুরু করুন।</p>
         </motion.div>
         
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <motion.div 
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.1 }}
-            className="glass-card px-4 py-2.5 rounded-2xl flex items-center gap-3 shadow-sm border-amber-100/50 bg-amber-50/10"
+            className="glass-card px-3 py-2 rounded-xl flex items-center gap-2 border-amber-100 bg-amber-50/10"
           >
-            <div className="w-8 h-8 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center shadow-sm">
-              <Flame size={16} fill="currentColor" />
+            <div className="w-7 h-7 bg-amber-100 text-amber-600 rounded-lg flex items-center justify-center">
+              <Flame size={14} fill="currentColor" />
             </div>
             <div>
-              <p className="text-[7px] text-gray-400 font-black uppercase tracking-widest leading-none mb-0.5">স্ট্রিক</p>
-              <p className="text-sm font-black text-gray-900 leading-none">{formatNumber(profile.streak)} দিন</p>
+              <p className="text-[7px] text-gray-400 font-bold uppercase tracking-widest leading-none mb-0.5">স্ট্রিক</p>
+              <p className="text-xs font-black text-gray-900 leading-none">{formatNumber(profile.streak)}</p>
             </div>
           </motion.div>
           
@@ -90,14 +90,14 @@ const Dashboard: React.FC = () => {
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.2 }}
-            className="glass-card px-4 py-2.5 rounded-2xl flex items-center gap-3 shadow-sm border-indigo-100/50 bg-indigo-50/10"
+            className="glass-card px-3 py-2 rounded-xl flex items-center gap-2 border-indigo-100 bg-indigo-50/10"
           >
-            <div className="w-8 h-8 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center shadow-sm">
-              <Star size={16} fill="currentColor" />
+            <div className="w-7 h-7 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center">
+              <Star size={14} fill="currentColor" />
             </div>
             <div>
-              <p className="text-[7px] text-gray-400 font-black uppercase tracking-widest leading-none mb-0.5">পয়েন্ট</p>
-              <p className="text-sm font-black text-gray-900 leading-none">{formatNumber(profile.totalPoints)}</p>
+              <p className="text-[7px] text-gray-400 font-bold uppercase tracking-widest leading-none mb-0.5">পয়েন্ট</p>
+              <p className="text-xs font-black text-gray-900 leading-none">{formatNumber(profile.totalPoints)}</p>
             </div>
           </motion.div>
         </div>
@@ -137,56 +137,28 @@ const Dashboard: React.FC = () => {
         transition={{ delay: 0.3 }}
         className="relative"
       >
-        <div className="bg-white rounded-[32px] p-1 border border-gray-100 shadow-xl shadow-indigo-100/20 overflow-hidden">
-          <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-[28px] p-6 text-white relative overflow-hidden">
-            {/* Background Decoration */}
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
-            <div className="absolute bottom-0 left-0 w-24 h-24 bg-indigo-400/20 rounded-full blur-2xl translate-y-1/2 -translate-x-1/2"></div>
-            
-            <div className="relative z-10 flex items-center justify-between gap-6">
-              <div className="flex-1 space-y-4">
+        <div className="bg-white rounded-[28px] p-0.5 border border-gray-100 shadow-lg shadow-indigo-100/10 overflow-hidden">
+          <div className="bg-indigo-600 rounded-[26px] p-5 text-white relative overflow-hidden">
+            <div className="relative z-10 flex items-center justify-between gap-4">
+              <div className="flex-1 space-y-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center border border-white/20 shadow-inner">
-                    <span className="text-2xl font-black">{profile.level}</span>
+                  <div className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-xl flex items-center justify-center border border-white/20 shadow-inner">
+                    <span className="text-xl font-black">{profile.level}</span>
                   </div>
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-100 mb-0.5">বর্তমান লেভেল</p>
-                    <h2 className="text-xl font-black tracking-tight">লেভেল {formatNumber(profile.level)}</h2>
+                    <h2 className="text-lg font-black tracking-tight leading-none mb-1">লেভেল {formatNumber(profile.level)}</h2>
+                    <p className="text-[8px] font-black uppercase tracking-widest text-indigo-100">XP প্রগ্রেস</p>
                   </div>
                 </div>
                 
-                <div className="space-y-2">
-                  <div className="flex justify-between items-end">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-indigo-100">XP প্রগ্রেস</span>
-                    <span className="text-xs font-black">{formatNumber(profile.xp % 100)} <span className="text-indigo-200 text-[10px]">/ ১০০</span></span>
-                  </div>
-                  <div className="h-2.5 bg-black/20 rounded-full overflow-hidden p-0.5">
+                <div className="space-y-1.5">
+                  <div className="h-1.5 bg-black/20 rounded-full overflow-hidden">
                     <motion.div
                       initial={{ width: 0 }}
                       animate={{ width: `${profile.xp % 100}%` }}
                       transition={{ duration: 1.2, ease: "circOut" }}
-                      className="h-full bg-gradient-to-r from-white to-indigo-100 rounded-full shadow-[0_0_10px_rgba(255,255,255,0.4)]"
+                      className="h-full bg-white rounded-full"
                     ></motion.div>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="hidden sm:block shrink-0">
-                <div className="w-20 h-20 relative">
-                  <svg className="w-full h-full" viewBox="0 0 100 100">
-                    <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/10" />
-                    <motion.circle 
-                      cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="6" 
-                      strokeDasharray="283"
-                      initial={{ strokeDashoffset: 283 }}
-                      animate={{ strokeDashoffset: 283 - (283 * (profile.xp % 100) / 100) }}
-                      transition={{ duration: 1.5, ease: "easeOut" }}
-                      strokeLinecap="round"
-                      className="text-white drop-shadow-[0_0_5px_rgba(255,255,255,0.5)]"
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Zap size={24} className="text-white animate-pulse" fill="currentColor" />
                   </div>
                 </div>
               </div>

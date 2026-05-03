@@ -2,54 +2,32 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     // ===============================================================
-    // Assumed Data Model
+    // Global Safety Net
     // ===============================================================
-    // Collection: users
-    // Fields: uid, name, email, photoURL, totalPoints, xp, level, streak, accuracy, quizzesPlayed, preferredLanguage, role, createdAt, updatedAt
-    //
-    // Collection: questions
-    // Fields: questionText, optionA, optionB, optionC, optionD, correctAnswer, explanation, category, topic, difficulty, tags, language, sourceType, approved, createdAt
-    //
-    // Collection: quiz_sessions
-    // Fields: userId, mode, category, score, questionsAnswered, correctCount, wrongCount, earnedXP, startedAt, endedAt
-    //
-    // Collection: leaderboard
-    // Fields: userId, displayName, totalPoints, level, avatar
+    match /{document=**} {
+      allow read, write: if false;
+    }
 
     // ===============================================================
     // Helper Functions
     // ===============================================================
-    function isAuthenticated() {
+    function isSignedIn() {
       return request.auth != null;
     }
 
     function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+      return isSignedIn() && request.auth.uid == userId;
     }
 
     function isAdmin() {
-      return isAuthenticated() && 
+      return isSignedIn() && 
         (request.auth.token.email == "rakibulhasantohin@gmail.com" ||
-         request.auth.token.email == "rakibulhasantuhin010@gmail.com");
+         request.auth.token.email == "rakibulhasantuhin010@gmail.com") &&
+         request.auth.token.email_verified == true;
     }
 
-    function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'name', 'email']) &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             data.email is string && data.email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
-    }
-
-    function isValidQuestion(data) {
-      return data.keys().hasAll(['questionText', 'optionA', 'optionB', 'optionC', 'optionD', 'correctAnswer', 'category']) &&
-             data.questionText is string && data.questionText.size() < 2000 &&
-             data.correctAnswer in ['A', 'B', 'C', 'D'];
-    }
-
-    function isValidBattle(data) {
-      return data.keys().hasAll(['creatorId', 'category', 'stake', 'status', 'questions']) &&
-             data.creatorId is string &&
-             data.stake is int && data.stake >= 0 &&
-             data.status in ['waiting', 'active', 'completed'];
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     function incoming() {
@@ -60,76 +38,135 @@ service cloud.firestore {
       return resource.data;
     }
 
-    function isSameUser(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    // --- Validation Helpers ---
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'name', 'email']) &&
+             data.uid == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.email is string && data.email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$") &&
+             (data.get('role', 'user') == 'user' || isAdmin());
+    }
+
+    function isValidBattle(data) {
+      return data.keys().hasAll(['creatorId', 'category', 'stake', 'status', 'questions', 'createdAt']) &&
+             data.creatorId == request.auth.uid &&
+             data.category is string && data.category.size() <= 64 &&
+             isValidId(data.category) &&
+             data.stake is int && data.stake >= 0 &&
+             data.status in ['waiting', 'active', 'completed'] &&
+             data.questions is list && data.questions.size() > 0 && data.questions.size() <= 20 &&
+             data.get('isBot', false) is bool &&
+             data.createdAt == request.time;
+    }
+
+    function isValidBattleUpdate(ex, inc) {
+      return inc.creatorId == ex.creatorId &&
+             inc.category == ex.category &&
+             inc.stake == ex.stake &&
+             inc.createdAt == ex.createdAt &&
+             (
+               (ex.status == 'waiting' && inc.status in ['waiting', 'active', 'completed']) ||
+               (ex.status == 'active' && inc.status in ['active', 'completed']) ||
+               (ex.status == 'completed' && inc.status == 'completed')
+             );
+    }
+
+    function isValidMessage(data, battle) {
+      return data.keys().hasAll(['battleId', 'senderId', 'senderName', 'text', 'createdAt']) &&
+             (battle.creatorId == request.auth.uid || battle.opponentId == request.auth.uid) &&
+             (data.senderId == request.auth.uid || (data.senderId == 'bot-id' && battle.get('isBot', false) == true && battle.creatorId == request.auth.uid)) &&
+             data.text is string && data.text.size() > 0 && data.text.size() <= 500 &&
+             data.createdAt == request.time;
     }
 
     // ===============================================================
-    // Rules
+    // Collection Rules
     // ===============================================================
 
     match /users/{userId} {
-      allow get: if isAuthenticated();
-      allow list: if isAuthenticated() && (isAdmin() || resource.data.email == request.auth.token.email);
-      allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().role == 'user';
-      allow update: if (isOwner(userId) || isAdmin()) && 
-                    (incoming().role == existing().role || isAdmin());
-      allow delete: if isAdmin() || (isAuthenticated() && existing().email == request.auth.token.email);
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow update: if (isOwner(userId) || isAdmin()) && (
+        // Prevent privilege escalation
+        (incoming().get('role', 'user') == existing().get('role', 'user') || isAdmin()) &&
+        // Protect UID
+        incoming().uid == existing().uid
+      );
     }
 
     match /questions/{questionId} {
-      allow read: if isAuthenticated();
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
+    match /battles/{battleId} {
+      allow list: if isSignedIn() && existing().status == 'waiting';
+      allow get: if isSignedIn();
+      allow create: if isSignedIn() && isValidBattle(incoming()) && isValidId(battleId);
+      
+      allow update: if isSignedIn() && isValidBattleUpdate(existing(), incoming()) && (
+        isAdmin() ||
+        (
+          (request.auth.uid == existing().creatorId || request.auth.uid == existing().opponentId) && (
+            // Action: Join
+            (existing().status == 'waiting' && incoming().status == 'active' && 
+             incoming().diff(existing()).affectedKeys().hasOnly(['status', 'opponentId', 'opponentName', 'opponentPhoto'])) ||
+            
+            // Action: Creator Update
+            (request.auth.uid == existing().creatorId && 
+             incoming().diff(existing()).affectedKeys().hasOnly(['creatorScore', 'creatorCompleted', 'creatorCoinsDeducted'])) ||
+
+            // Action: Opponent Update
+            (request.auth.uid == existing().opponentId && 
+             incoming().diff(existing()).affectedKeys().hasOnly(['opponentScore', 'opponentCompleted'])) ||
+            
+            // Action: Bot Update (by Creator)
+            (request.auth.uid == existing().creatorId && existing().get('isBot', false) == true &&
+             incoming().diff(existing()).affectedKeys().hasOnly(['opponentScore', 'opponentCompleted'])) ||
+
+            // Action: Complete Battle
+            (incoming().status == 'completed' &&
+             incoming().diff(existing()).affectedKeys().hasOnly(['status', 'winnerId', 'creatorScore', 'creatorCompleted', 'opponentScore', 'opponentCompleted'])) ||
+
+            // Action: Complete Battle for Bot (by Creator)
+            (request.auth.uid == existing().creatorId && existing().get('isBot', false) == true && incoming().status == 'completed' &&
+             incoming().diff(existing()).affectedKeys().hasOnly(['status', 'winnerId', 'opponentScore', 'opponentCompleted'])) ||
+
+            // Action: Award Prize
+            (existing().status == 'completed' && 
+             incoming().diff(existing()).affectedKeys().hasOnly(['creatorPrizeAwarded', 'opponentPrizeAwarded']))
+          )
+        )
+      );
+      
+      match /messages/{messageId} {
+        allow read: if isSignedIn() && (
+          get(/databases/$(database)/documents/battles/$(battleId)).data.creatorId == request.auth.uid || 
+          get(/databases/$(database)/documents/battles/$(battleId)).data.opponentId == request.auth.uid || 
+          isAdmin()
+        );
+        allow create: if isSignedIn() && 
+          isValidMessage(incoming(), get(/databases/$(database)/documents/battles/$(battleId)).data) &&
+          isValidId(messageId);
+      }
+    }
+
     match /quiz_sessions/{sessionId} {
-      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAdmin();
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
     }
 
     match /leaderboard/{userId} {
       allow read: if true;
-      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
-      allow delete: if isAdmin();
-    }
-
-    match /battles/{battleId} {
-      allow list: if isAuthenticated() && resource.data.status == 'waiting';
-      allow get: if isAuthenticated();
-      allow create: if isAuthenticated() && incoming().creatorId == request.auth.uid && isValidBattle(incoming());
-      allow update: if isAuthenticated() && (
-        // Joining: only status and opponent info can change
-        (existing().status == 'waiting' && incoming().status == 'active' && 
-         incoming().opponentId == request.auth.uid && 
-         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'opponentId', 'opponentName', 'opponentPhoto'])) ||
-        // Finalizing or updating scores or deducting coins
-        (existing().status == 'active' && 
-         (request.auth.uid == existing().creatorId || request.auth.uid == existing().opponentId)) ||
-        // Claiming prize
-        (existing().status == 'completed' && (request.auth.uid == existing().creatorId || request.auth.uid == existing().opponentId)) ||
-        isAdmin()
-      );
-      allow delete: if isAdmin();
-    }
-
-    match /battles/{battleId}/messages/{messageId} {
-      allow read: if isAuthenticated() && (
-        isAdmin() ||
-        get(/databases/$(database)/documents/battles/$(battleId)).data.creatorId == request.auth.uid ||
-        get(/databases/$(database)/documents/battles/$(battleId)).data.opponentId == request.auth.uid
-      );
-      allow create: if isAuthenticated() && (
-        get(/databases/$(database)/documents/battles/$(battleId)).data.creatorId == request.auth.uid ||
-        get(/databases/$(database)/documents/battles/$(battleId)).data.opponentId == request.auth.uid
-      ) && incoming().senderId == request.auth.uid && incoming().text.size() <= 200;
-      allow delete: if isAdmin();
+      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
 
     match /notifications/{notifId} {
-      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated();
-      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /categories/{categoryId} {
@@ -143,9 +180,8 @@ service cloud.firestore {
     }
 
     match /mistakes/{mistakeId} {
-      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAdmin();
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
     }
   }
 }

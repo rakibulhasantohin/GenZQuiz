@@ -80,6 +80,7 @@ const AdminPage: React.FC = () => {
   const [coinEditUser, setCoinEditUser] = useState<{uid: string, name: string, coins: number} | null>(null);
   const [adjustAmount, setAdjustAmount] = useState(0);
   const [isAdjusting, setIsAdjusting] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [editMode, setEditMode] = useState<'adjust' | 'set'>('adjust');
 
   const handleUpdateCoins = async (e: React.FormEvent) => {

@@ -1,10 +1,57 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { doc, onSnapshot, updateDoc, increment, serverTimestamp, collection, addDoc, query, orderBy, limit, runTransaction, getDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { doc, onSnapshot, updateDoc, increment, serverTimestamp, collection, addDoc, query, orderBy, limit, runTransaction, getDoc, getDocFromServer } from 'firebase/firestore';
+import { db, auth } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { Battle, Question, BattleMessage } from '../types';
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 import { Swords, Trophy, Users, Star, Timer, CheckCircle2, XCircle, Loader2, Home, Coins, ArrowRight, Zap, MessageCircle, Send, X, RefreshCw } from 'lucide-react';
 import { formatNumber, cn } from '../lib/utils';
 
@@ -26,6 +73,29 @@ const BattleArena: React.FC = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [showVersus, setShowVersus] = useState(false);
   const [answers, setAnswers] = useState<Record<number, string>>({});
+  
+  const isInitialLoad = useRef(true);
+  const chatAudio = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    if (!chatAudio.current) {
+      chatAudio.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3');
+      chatAudio.current.volume = 0.4;
+    }
+  }, []);
+
+  useEffect(() => {
+    async function testConnection() {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error) {
+        if(error instanceof Error && error.message.includes('the client is offline')) {
+          console.error("Please check your Firebase configuration.");
+        }
+      }
+    }
+    testConnection();
+  }, []);
 
   const isCreator = battle?.creatorId === profile?.uid;
   const myCompleted = isCreator ? battle?.creatorCompleted : battle?.opponentCompleted;
@@ -54,13 +124,116 @@ const BattleArena: React.FC = () => {
       const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BattleMessage));
       setMessages(msgs);
       
-      if (!showChat) {
-        setUnreadCount(prev => prev + snapshot.docChanges().filter(change => change.type === 'added').length);
-      }
+      snapshot.docChanges().forEach(change => {
+        if (change.type === 'added') {
+          const data = change.doc.data() as any;
+          const isFromOthers = data.senderId !== profile?.uid;
+          
+          if (!isInitialLoad.current && isFromOthers && !snapshot.metadata.hasPendingWrites) {
+            chatAudio.current?.play().catch(e => console.log('Audio block:', e));
+            if (!showChat) {
+              setUnreadCount(prev => prev + 1);
+            }
+          }
+        }
+      });
+      
+      isInitialLoad.current = false;
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `battles/${battleId}/messages`);
     });
 
     return () => unsubscribe();
-  }, [battleId, showChat]);
+  }, [battleId, showChat, profile?.uid]);
+
+  // Bot Simulation Logic
+  useEffect(() => {
+    if (!battle || !battle.isBot || battle.status !== 'active' || battle.opponentCompleted) return;
+
+    const simulateBot = async () => {
+      let botScore = 0;
+      const questionsCount = battle.questions.length;
+      
+      // Send a greeting message from bot
+      try {
+        const path = `battles/${battle.id}/messages`;
+        await addDoc(collection(db, 'battles', battle.id, 'messages'), {
+          battleId: battle.id,
+          senderId: 'bot-id',
+          senderName: 'GenZ Bot',
+          text: 'ব্যাটেল শুরু হোক! আমি তৈরি, আপনি? 😎',
+          createdAt: serverTimestamp()
+        });
+      } catch (e) { 
+        console.error('Initial bot message error:', e);
+        // We don't throw here to allow simulation to continue, but we log it
+      }
+
+      // We simulate thinking times
+      for (let i = 0; i < questionsCount; i++) {
+        // Wait 5-12 seconds per question
+        const waitTime = 5000 + Math.random() * 7000;
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        
+        // AI Accuracy: ~75%
+        if (Math.random() < 0.75) {
+          botScore++;
+        }
+      }
+
+      // Finish battle for bot
+      try {
+        const battleRef = doc(db, 'battles', battle.id);
+        
+        // Use a transaction to ensure we don't overwrite user's finish logic if they finished first
+        await runTransaction(db, async (transaction) => {
+          const bSnap = await transaction.get(battleRef);
+          if (!bSnap.exists()) return;
+          const bData = bSnap.data() as Battle;
+          
+          if (bData.opponentCompleted) return;
+
+          const updateData: any = {
+            opponentScore: botScore,
+            opponentCompleted: true
+          };
+
+          if (bData.creatorCompleted) {
+            updateData.status = 'completed';
+            const userScore = bData.creatorScore || 0;
+            
+            let winnerId: string | 'draw' = 'draw';
+            if (userScore > botScore) {
+              winnerId = bData.creatorId;
+            } else if (botScore > userScore) {
+              winnerId = 'bot-id';
+            }
+            updateData.winnerId = winnerId;
+          }
+
+          transaction.update(battleRef, updateData);
+        }).catch(e => handleFirestoreError(e, OperationType.UPDATE, `battles/${battle.id}`));
+
+        // Send a closing message from bot
+        try {
+          await addDoc(collection(db, 'battles', battle.id, 'messages'), {
+            battleId: battle.id,
+            senderId: 'bot-id',
+            senderName: 'GenZ Bot',
+            text: botScore >= (questionsCount / 2) ? 'ভালো খেলেছি আমি! আপনার কী খবর? 😊' : 'উফ! কয়েকটা ভুল হয়ে গেল। 😅',
+            createdAt: serverTimestamp()
+          });
+        } catch (e) {
+          console.error('Final bot message error:', e);
+        }
+      } catch (error) {
+        console.error('Error simulating bot finish:', error);
+        handleFirestoreError(error, OperationType.UPDATE, `battles/${battle.id}`);
+      }
+    };
+
+    simulateBot();
+  }, [battle?.status, battle?.isBot, battle?.id]);
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -433,101 +606,71 @@ const BattleArena: React.FC = () => {
     return (
       <div className="min-h-screen py-6 flex flex-col md:py-10">
         {/* Top Header Stats - Enhanced with Avatars */}
-        <div className="flex items-center justify-between gap-4 mb-8">
-          <div className="flex items-center gap-2 sm:gap-4 flex-1">
-            <div className="relative group">
+        <div className="flex items-center justify-between gap-3 mb-6">
+          <div className="flex items-center gap-3 flex-1">
+            <div className="relative shrink-0">
               <div className={cn(
-                "w-10 h-10 sm:w-14 sm:h-14 rounded-2xl overflow-hidden border-2 transition-all shadow-sm bg-white shrink-0",
-                isCreator ? "border-indigo-500 shadow-indigo-100" : "border-gray-200"
+                "w-10 h-10 rounded-xl overflow-hidden border-2 transition-all shadow-sm bg-white",
+                isCreator ? "border-indigo-500" : "border-gray-100"
               )}>
                 {battle.creatorPhoto ? (
                   <img src={battle.creatorPhoto} alt={battle.creatorName} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-gray-50 text-gray-400">
-                    <Users size={20} />
+                    <Users size={16} />
                   </div>
                 )}
               </div>
-              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-indigo-600 rounded-lg flex items-center justify-center text-white border-2 border-white shadow-sm">
-                <span className="text-[8px] font-black">P1</span>
-              </div>
+              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-indigo-600 rounded-md flex items-center justify-center text-white border border-white text-[7px] font-black">P1</div>
             </div>
 
-            <div className="hidden sm:block">
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">আপনার স্কোর</p>
-              <div className="flex items-center gap-2">
-                <Zap size={14} className="text-amber-500" fill="currentColor" />
-                <span className="text-xl font-black text-gray-900">{formatNumber(score)}</span>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <Zap size={10} className="text-amber-500" fill="currentColor" />
+                <span className="text-sm font-black text-gray-900 leading-none">{formatNumber(isCreator ? score : (battle.creatorScore || 0))}</span>
               </div>
-            </div>
-            
-            {/* Mobile Score Label */}
-            <div className="sm:hidden flex flex-col">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none">P1</span>
-              <span className="text-sm font-black text-gray-900">{formatNumber(isCreator ? score : 0)}</span>
             </div>
           </div>
 
-          <div className="flex-1 flex flex-col items-center gap-2">
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl shadow-lg border-2 bg-white text-indigo-600 relative overflow-hidden group">
+          <div className="flex-1 flex flex-col items-center gap-1.5 max-w-[120px]">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm border-2 bg-white text-indigo-600 relative overflow-hidden">
                <motion.div 
                  key={timeLeft}
-                 initial={{ scale: 1.5, opacity: 0 }}
+                 initial={{ scale: 1.2, opacity: 0 }}
                  animate={{ scale: 1, opacity: 1 }}
-                 className={cn(
-                   "relative z-10",
-                   timeLeft <= 5 ? "text-red-600" : "text-indigo-600"
-                 )}
+                 className={cn("relative z-10", timeLeft <= 5 ? "text-red-500" : "text-indigo-600")}
                >
                  {timeLeft}
                </motion.div>
-               {timeLeft <= 5 && (
-                 <motion.div 
-                   animate={{ scale: [1, 2], opacity: [0.3, 0] }}
-                   transition={{ repeat: Infinity, duration: 1 }}
-                   className="absolute inset-0 bg-red-100 rounded-full"
-                 />
-               )}
             </div>
-            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
                <motion.div 
                 initial={{ width: 0 }}
                 animate={{ width: `${progress}%` }}
-                className="h-full bg-indigo-600 shadow-[0_0_10px_rgba(79,70,229,0.3)]"
+                className="h-full bg-indigo-600"
                />
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-4 flex-1 justify-end text-right">
-             <div className="hidden sm:block">
-               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">প্রতিপক্ষ ও ফলাফল</p>
-               <div className="flex items-center justify-end gap-2">
-                 <span className="text-xs font-bold text-gray-400 italic">খেলছেন...</span>
-               </div>
-             </div>
-             
-             {/* Mobile Opponent Label */}
-             <div className="sm:hidden flex flex-col items-end">
-               <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none">P2</span>
-               <span className="text-sm font-black text-gray-400">---</span>
-             </div>
+          <div className="flex items-center gap-3 flex-1 justify-end text-right">
+            <div>
+              <span className="text-sm font-black text-gray-400 leading-none">{formatNumber(!isCreator ? score : (battle.opponentScore || 0))}</span>
+            </div>
 
-             <div className="relative group">
+            <div className="relative shrink-0">
               <div className={cn(
-                "w-10 h-10 sm:w-14 sm:h-14 rounded-2xl overflow-hidden border-2 transition-all shadow-sm bg-white shrink-0",
-                !isCreator ? "border-indigo-500 shadow-indigo-100" : "border-gray-200"
+                "w-10 h-10 rounded-xl overflow-hidden border-2 transition-all shadow-sm bg-white",
+                !isCreator ? "border-indigo-500" : "border-gray-100"
               )}>
                 {battle.opponentPhoto ? (
                   <img src={battle.opponentPhoto} alt={battle.opponentName} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-gray-50 text-gray-400">
-                    <Users size={20} />
+                    <Users size={16} />
                   </div>
                 )}
               </div>
-              <div className="absolute -bottom-1 -left-1 w-5 h-5 bg-gray-600 rounded-lg flex items-center justify-center text-white border-2 border-white shadow-sm">
-                <span className="text-[8px] font-black">P2</span>
-              </div>
+              <div className="absolute -bottom-1 -left-1 w-4 h-4 bg-gray-600 rounded-md flex items-center justify-center text-white border border-white text-[7px] font-black">P2</div>
             </div>
           </div>
         </div>
@@ -537,11 +680,10 @@ const BattleArena: React.FC = () => {
           <AnimatePresence mode="wait">
             <motion.div
               key={currentQuestionIndex}
-              initial={{ opacity: 0, y: 20, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -20, scale: 0.95 }}
-              transition={{ type: "spring", damping: 20, stiffness: 100 }}
-              className="glass-card p-10 md:p-14 rounded-[56px] shadow-2xl shadow-indigo-100/40 mb-10 relative overflow-hidden bg-white/70 backdrop-blur-xl border-indigo-50 text-center"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.02 }}
+              className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-xl mb-6 relative overflow-hidden text-center"
             >
               <div className="absolute top-0 left-0 w-full h-1 bg-gray-50">
                 <motion.div 
@@ -549,25 +691,16 @@ const BattleArena: React.FC = () => {
                   animate={{ width: "0%" }}
                   transition={{ duration: 15, ease: "linear" }}
                   key={`timer-bar-${currentQuestionIndex}`}
-                  className={cn(
-                    "h-full",
-                    timeLeft <= 5 ? "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]" : "bg-indigo-600"
-                  )}
+                  className={cn("h-full", timeLeft <= 5 ? "bg-red-500" : "bg-indigo-600")}
                 />
               </div>
 
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.2 }}
-              >
-                <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 text-[10px] font-black uppercase tracking-[0.2em] rounded-full mb-6 mx-auto">
-                  প্রশ্ন {currentQuestionIndex + 1} of {battle.questions.length}
-                </div>
-                <h2 className="text-2xl md:text-4xl font-black text-gray-900 leading-tight">
-                  {currentQuestion.questionText}
-                </h2>
-              </motion.div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 text-[9px] font-black uppercase tracking-widest rounded-full mb-4">
+                প্রশ্ন {currentQuestionIndex + 1} / {battle.questions.length}
+              </div>
+              <h2 className="text-xl md:text-2xl font-black text-gray-800 leading-relaxed">
+                {currentQuestion.questionText}
+              </h2>
             </motion.div>
           </AnimatePresence>
 
@@ -589,16 +722,16 @@ const BattleArena: React.FC = () => {
                   whileHover={selectedAnswer === null ? { scale: 1.02, y: -2 } : {}}
                   whileTap={selectedAnswer === null ? { scale: 0.98 } : {}}
                   className={cn(
-                    "relative p-6 rounded-[32px] text-left transition-all border-2 group",
-                    selectedAnswer === null ? "bg-white border-gray-100 hover:border-indigo-400 hover:shadow-xl" : "",
-                    isCorrectOpt ? "bg-emerald-50 border-emerald-500 shadow-xl shadow-emerald-100" : 
-                    isWrongOpt ? "bg-red-50 border-red-500 shadow-xl shadow-red-100" : 
-                    isSelected ? "bg-gray-50 border-gray-300" : "opacity-70 bg-white border-gray-50"
+                    "relative p-4 rounded-2xl text-left transition-all border-2 group",
+                    selectedAnswer === null ? "bg-white border-gray-50 hover:border-indigo-200" : "",
+                    isCorrectOpt ? "bg-emerald-50 border-emerald-400" : 
+                    isWrongOpt ? "bg-red-50 border-red-400" : 
+                    isSelected ? "bg-gray-50 border-gray-200" : "opacity-70 bg-white border-transparent"
                   )}
                 >
-                  <div className="flex items-center gap-4 relative z-10">
+                  <div className="flex items-center gap-3 relative z-10">
                     <div className={cn(
-                      "w-12 h-12 rounded-2xl flex items-center justify-center font-black text-base shadow-sm shrink-0 transition-colors",
+                      "w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm shrink-0 transition-colors",
                       isCorrectOpt ? "bg-emerald-500 text-white" :
                       isWrongOpt ? "bg-red-500 text-white" :
                       isSelected ? "bg-gray-400 text-white" :
@@ -607,7 +740,7 @@ const BattleArena: React.FC = () => {
                       {key}
                     </div>
                     <span className={cn(
-                      "text-lg font-bold flex-1 leading-snug",
+                      "text-sm font-bold flex-1 leading-tight",
                       isCorrectOpt ? "text-emerald-700" : 
                       isWrongOpt ? "text-red-700" : 
                       "text-gray-700"
@@ -718,6 +851,7 @@ const BattleArena: React.FC = () => {
   // Completed or Results State
   if (gameOver || myCompleted || battle.status === 'completed') {
     const isWinner = battle.winnerId === profile.uid;
+    const isBotWinner = battle.winnerId === 'bot-id';
     const isDraw = battle.winnerId === 'draw';
     const isWaitingResult = battle.status !== 'completed' && (isCreator ? !battle.opponentCompleted : !battle.creatorCompleted);
 
@@ -747,7 +881,7 @@ const BattleArena: React.FC = () => {
                   transition={{ repeat: Infinity, duration: 2 }}
                   className="absolute inset-4 bg-indigo-600 rounded-[40px] flex items-center justify-center text-white shadow-2xl shadow-indigo-200"
                 >
-                  <Users size={56} className="animate-pulse" />
+                  {battle.isBot ? <Zap size={56} className="animate-pulse" /> : <Users size={56} className="animate-pulse" />}
                 </motion.div>
               </div>
               
@@ -755,7 +889,7 @@ const BattleArena: React.FC = () => {
                 <h2 className="text-4xl font-black text-gray-900 tracking-tight">ফলাফলের জন্য <span className="text-indigo-600">অপেক্ষা...</span></h2>
                 <p className="text-gray-500 font-medium leading-relaxed">
                   দুর্দান্ত খেলেছেন! আপনার স্কোর <span className="text-indigo-600 font-black">{formatNumber(score)}</span>। 
-                  প্রতিপক্ষ এখনো খেলছেন, তিনি শেষ করলেই ফলাফল দেখা যাবে।
+                  {battle.isBot ? "কম্পিউটার এখনো হিসাব করছে..." : "প্রতিপক্ষ এখনো খেলছেন, তিনি শেষ করলেই ফলাফল দেখা যাবে।"}
                 </p>
               </div>
 
@@ -815,108 +949,108 @@ const BattleArena: React.FC = () => {
                 </motion.div>
 
                 <motion.h1 
-                  initial={{ opacity: 0, y: 20 }}
+                  initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.4 }}
-                  className="text-4xl md:text-6xl font-black text-gray-900 tracking-tight leading-none"
+                  className="text-3xl md:text-5xl font-black text-gray-900 tracking-tighter"
                 >
-                  {isWinner ? 'একদম কড়াকড়ি জয়!' : isDraw ? 'যুদ্ধ শেষ, ফলাফল ড্র!' : 'মন খারাপ করবেন না!'}
+                  {isWinner ? 'কড়াকড়ি জয়!' : isDraw ? 'ফলাফল ড্র!' : 'মন খারাপ করবেন না!'}
                 </motion.h1>
                 
                 <motion.p 
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.6 }}
-                  className="text-gray-500 font-bold text-lg mt-4"
+                  className="text-gray-400 font-bold text-sm mt-2"
                 >
                   {isWinner 
-                    ? (battle.stake > 0 ? `আপনি জিতে নিয়েছেন ${formatNumber(battle.stake * 2)}টি কয়েন!` : 'দুর্দান্ত পারফরম্যান্স! আপনি বিজয়ী!')
-                    : isDraw ? 'একটি হাড্ডাহাড্ডি লড়াই ছিল।' 
+                    ? (battle.stake > 0 ? `আপনি জিতে নিয়েছেন ${formatNumber(battle.stake * 2)}টি কয়েন!` : 'দুর্দান্ত খেলছেন!')
+                    : isDraw ? 'হাড্ডাহাড্ডি লড়াই ছিল।' 
                     : 'পরের বার অবশ্যই আরও ভালো করতে পারবেন।'}
                 </motion.p>
               </div>
 
               {/* Main Score Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
                 {/* Player 1 Card */}
                 <motion.div 
-                  initial={{ x: -20, opacity: 0 }}
+                  initial={{ x: -10, opacity: 0 }}
                   animate={{ x: 0, opacity: 1 }}
                   transition={{ delay: 0.7 }}
                   className={cn(
-                    "glass-card p-10 rounded-[56px] border-2 relative overflow-hidden transition-all",
-                    isCreator ? (isWinner ? "border-amber-400 bg-amber-50/50 shadow-2xl shadow-amber-100" : isDraw ? "border-indigo-400 bg-indigo-50/50 shadow-2xl shadow-indigo-100" : "border-gray-200 bg-white") 
-                    : (!isWinner && !isDraw ? "border-amber-400 bg-amber-50/50 shadow-2xl shadow-amber-100" : "border-gray-200 bg-white")
+                    "glass-card p-6 rounded-[32px] border-2 relative overflow-hidden transition-all",
+                    isCreator ? (isWinner ? "border-amber-400 bg-amber-50/50" : isDraw ? "border-indigo-400 bg-indigo-50/50" : "border-gray-100 bg-white") 
+                    : (!isWinner && !isDraw ? "border-amber-400 bg-amber-50/50" : "border-gray-100 bg-white")
                   )}
                 >
                   {((isCreator && isWinner) || (!isCreator && !isWinner && !isDraw)) && (
-                    <div className="absolute top-0 right-0 bg-amber-400 text-amber-900 font-black text-[10px] uppercase tracking-widest px-6 py-2 rounded-bl-3xl">Winner</div>
+                    <div className="absolute top-0 right-0 bg-amber-400 text-amber-900 font-black text-[8px] uppercase tracking-widest px-4 py-1.5 rounded-bl-2xl">Winner</div>
                   )}
-                  <div className="flex items-center gap-6 mb-8">
-                    <div className="w-20 h-20 rounded-[32px] bg-white shadow-xl flex items-center justify-center overflow-hidden border-4 border-white shrink-0">
-                      {battle.creatorPhoto ? <img src={battle.creatorPhoto} className="w-full h-full object-cover" /> : <Users size={32} className="text-gray-200" />}
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="w-12 h-12 rounded-2xl bg-white shadow-md flex items-center justify-center overflow-hidden border-2 border-white shrink-0">
+                      {battle.creatorPhoto ? <img src={battle.creatorPhoto} className="w-full h-full object-cover" /> : <Users size={20} className="text-gray-200" />}
                     </div>
                     <div className="text-left flex-1 min-w-0">
-                      <h4 className="font-black text-2xl text-gray-900 truncate tracking-tight">{battle.creatorName}</h4>
-                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Player 1 (Host)</p>
+                      <h4 className="font-black text-base text-gray-900 truncate tracking-tight">{battle.creatorName}</h4>
+                      <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest leading-none">P1 (Host)</p>
                     </div>
                   </div>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-7xl font-black text-gray-900 leading-none">
+                    <span className="text-4xl font-black text-gray-900 leading-none">
                       {isCreator ? formatNumber(score) : formatNumber(battle.creatorScore || 0)}
                     </span>
-                    <span className="text-lg font-black text-gray-400">সঠিক</span>
+                    <span className="text-xs font-black text-gray-400 uppercase">Correct</span>
                   </div>
                 </motion.div>
 
                 {/* Player 2 Card */}
                 <motion.div 
-                  initial={{ x: 20, opacity: 0 }}
+                  initial={{ x: 10, opacity: 0 }}
                   animate={{ x: 0, opacity: 1 }}
                   transition={{ delay: 0.8 }}
                   className={cn(
-                    "glass-card p-10 rounded-[56px] border-2 relative overflow-hidden transition-all",
-                    !isCreator ? (isWinner ? "border-amber-400 bg-amber-50/50 shadow-2xl shadow-amber-100" : isDraw ? "border-indigo-400 bg-indigo-50/50 shadow-2xl shadow-indigo-100" : "border-gray-200 bg-white") 
-                    : (isWinner === false && isDraw === false ? "border-amber-400 bg-amber-50/50 shadow-2xl shadow-amber-100" : "border-gray-200 bg-white")
+                    "glass-card p-6 rounded-[32px] border-2 relative overflow-hidden transition-all",
+                    !isCreator ? (isWinner ? "border-amber-400 bg-amber-50/50" : isDraw ? "border-indigo-400 bg-indigo-50/50" : "border-gray-100 bg-white") 
+                    : (isBotWinner ? "border-amber-400 bg-amber-50/50" : isDraw ? "border-indigo-400 bg-indigo-50/50" : "border-gray-100 bg-white")
                   )}
                 >
-                  {((!isCreator && isWinner) || (isCreator && !isWinner && !isDraw)) && (
-                    <div className="absolute top-0 right-0 bg-amber-400 text-amber-900 font-black text-[10px] uppercase tracking-widest px-6 py-2 rounded-bl-3xl">Winner</div>
+                  {((!isCreator && isWinner) || (isCreator && isBotWinner)) && (
+                    <div className="absolute top-0 right-0 bg-amber-400 text-amber-900 font-black text-[8px] uppercase tracking-widest px-4 py-1.5 rounded-bl-2xl">Winner</div>
                   )}
-                  <div className="flex items-center gap-6 mb-8">
-                    <div className="w-20 h-20 rounded-[32px] bg-white shadow-xl flex items-center justify-center overflow-hidden border-4 border-white shrink-0">
-                      {battle.opponentPhoto ? <img src={battle.opponentPhoto} className="w-full h-full object-cover" /> : <Users size={32} className="text-gray-200" />}
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="w-12 h-12 rounded-2xl bg-white shadow-md flex items-center justify-center overflow-hidden border-2 border-white shrink-0">
+                      {battle.opponentPhoto ? <img src={battle.opponentPhoto} className="w-full h-full object-cover" /> : <Users size={20} className="text-gray-200" />}
                     </div>
                     <div className="text-left flex-1 min-w-0">
-                      <h4 className="font-black text-2xl text-gray-900 truncate tracking-tight">{battle.opponentName || '...'}</h4>
-                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Player 2</p>
+                      <h4 className="font-black text-base text-gray-900 truncate tracking-tight">{battle.opponentName || '...'}</h4>
+                      <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest leading-none">P2 (Opponent)</p>
                     </div>
                   </div>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-7xl font-black text-gray-900 leading-none">
+                    <span className="text-4xl font-black text-gray-900 leading-none">
                       {!isCreator ? formatNumber(score) : formatNumber(battle.opponentScore || 0)}
                     </span>
-                    <span className="text-lg font-black text-gray-400">সঠিক</span>
+                    <span className="text-xs font-black text-gray-400 uppercase">Correct</span>
                   </div>
                 </motion.div>
               </div>
 
               {/* Reward/XP Notice */}
               <motion.div 
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 1 }}
-                className="bg-emerald-50 border border-emerald-100 p-6 rounded-[32px] w-full max-w-lg flex items-center gap-6"
+                className="bg-emerald-50 border border-emerald-100 p-4 rounded-3xl w-full max-w-sm flex items-center gap-4"
               >
-                <div className="w-14 h-14 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-100 shrink-0">
-                  <Star fill="currentColor" size={28} />
-                </div>
-                <div>
-                  <h4 className="text-emerald-900 font-black text-lg">পুরস্কার ও স্বীকৃতি</h4>
-                  <p className="text-emerald-700 font-medium text-sm">
-                    এই ব্যাটেল থেকে আপনি <span className="font-black">{formatNumber((isCreator ? (battle.creatorScore || 0) : (battle.opponentScore || 0)) * 20)} XP</span> এবং আপনার রেটিং আপডেট হয়েছে।
-                  </p>
-                </div>
+                 <div className="w-10 h-10 bg-emerald-500 text-white rounded-xl flex items-center justify-center shadow-lg shrink-0">
+                    <Star fill="currentColor" size={18} />
+                 </div>
+                 <div className="flex-1">
+                    <h4 className="text-emerald-900 font-black text-xs">পুরস্কার ও স্বীকৃতি</h4>
+                    <p className="text-emerald-700 font-medium text-[10px]">
+                       আপনার রেটিং এবং XP আপডেট করা হয়েছে।
+                    </p>
+                 </div>
               </motion.div>
 
               {/* Detailed Review Header */}
@@ -941,24 +1075,24 @@ const BattleArena: React.FC = () => {
                         transition={{ delay: idx * 0.1 }}
                         className="glass-card p-8 bg-white border-gray-100 rounded-[40px] shadow-sm hover:shadow-md transition-shadow"
                       >
-                        <div className="flex gap-6">
+                        <div className="flex gap-4">
                            <div className={cn(
-                             "w-14 h-14 rounded-2xl flex items-center justify-center font-black text-white shrink-0 shadow-2xl",
-                             isCorrect ? "bg-emerald-500 shadow-emerald-100" : "bg-red-500 shadow-red-100"
+                             "w-10 h-10 rounded-xl flex items-center justify-center font-black text-white shrink-0 shadow-lg",
+                             isCorrect ? "bg-emerald-500 shadow-emerald-50" : "bg-red-500 shadow-red-50"
                            )}>
                              {idx + 1}
                            </div>
-                           <div className="space-y-4 flex-1">
-                              <p className="font-bold text-gray-900 text-lg md:text-xl leading-snug">{q.questionText}</p>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                 <div className="p-4 rounded-[24px] bg-emerald-50 border border-emerald-100">
-                                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">সঠিক উত্তর</p>
-                                    <p className="text-sm font-bold text-emerald-800">{q[`option${q.correctAnswer}` as keyof Question] as string}</p>
+                           <div className="space-y-3 flex-1">
+                              <p className="font-bold text-gray-800 text-sm md:text-base leading-tight">{q.questionText}</p>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                 <div className="p-2 px-3 rounded-xl bg-emerald-50/50 border border-emerald-100">
+                                    <p className="text-[8px] font-black text-emerald-600 uppercase tracking-widest mb-0.5">সঠিক উত্তর</p>
+                                    <p className="text-xs font-bold text-emerald-800">{q[`option${q.correctAnswer}` as keyof Question] as string}</p>
                                  </div>
                                  {myAns && !isCorrect && (
-                                   <div className="p-4 rounded-[24px] bg-red-50 border border-red-100">
-                                      <p className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-1">আপনার উত্তর</p>
-                                      <p className="text-sm font-bold text-red-800">{q[`option${myAns}` as keyof Question] as string}</p>
+                                   <div className="p-2 px-3 rounded-xl bg-red-50/50 border border-red-100">
+                                      <p className="text-[8px] font-black text-red-600 uppercase tracking-widest mb-0.5">আপনার উত্তর</p>
+                                      <p className="text-xs font-bold text-red-800">{q[`option${myAns}` as keyof Question] as string}</p>
                                    </div>
                                  )}
                               </div>
@@ -971,23 +1105,23 @@ const BattleArena: React.FC = () => {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row gap-6 w-full max-w-xl pb-20 mt-10">
+              <div className="flex flex-col sm:flex-row gap-3 w-full max-w-sm pb-10 mt-6 shrink-0">
                 <motion.button 
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => navigate('/battle')}
-                  className="flex-1 py-6 bg-white border-2 border-indigo-600 text-indigo-600 rounded-[32px] font-black uppercase text-sm tracking-[0.2em] shadow-xl shadow-indigo-100/40 flex items-center justify-center gap-3"
+                  className="flex-1 py-4 bg-white border border-indigo-600 text-indigo-600 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-indigo-100/40 flex items-center justify-center gap-2"
                 >
-                  <RefreshCw size={20} />
+                  <RefreshCw size={14} />
                   আবার খেলুন
                 </motion.button>
                 <motion.button 
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => navigate('/dashboard')}
-                  className="flex-1 py-6 bg-indigo-600 text-white rounded-[32px] font-black uppercase text-sm tracking-[0.2em] shadow-2xl shadow-indigo-200 flex items-center justify-center gap-3"
+                  className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-indigo-200 flex items-center justify-center gap-2"
                 >
-                  <Home size={20} />
+                  <Home size={14} />
                   ড্যাশবোর্ড
                 </motion.button>
               </div>

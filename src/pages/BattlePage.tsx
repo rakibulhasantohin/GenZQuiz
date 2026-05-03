@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useCategories } from '../CategoryContext';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, increment, getDocs, limit } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, increment, getDocs, limit, runTransaction } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Battle, Question, UserProfile } from '../types';
 import { Coins, Swords, Shield, Plus, Users, Zap, CheckCircle2, AlertCircle, Loader2, Sparkles, RefreshCw, X } from 'lucide-react';
@@ -67,7 +67,7 @@ const BattlePage: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  const handleCreateBattle = async () => {
+  const handleCreateBattle = async (isBot = false) => {
     if (!profile || !selectedCategory) return;
     if ((profile.coins || 0) < stake) {
       alert('আপনার পর্যাপ্ত কয়েন নেই!');
@@ -101,18 +101,29 @@ const BattlePage: React.FC = () => {
         creatorId: profile.uid,
         creatorName: profile.name,
         creatorPhoto: profile.photoURL || '',
+        opponentId: isBot ? 'bot-id' : null,
+        opponentName: isBot ? 'GenZ Bot' : null,
+        opponentPhoto: isBot ? 'https://api.dicebear.com/7.x/bottts/svg?seed=GenZBot' : null,
         category: selectedCategory,
         categoryNameBn: category?.nameBn || '',
         stake: stake,
-        status: 'waiting',
+        status: isBot ? 'active' : 'waiting',
         questions: selectedQuestions,
         creatorScore: 0,
         opponentScore: 0,
         creatorCompleted: false,
         opponentCompleted: false,
-        creatorCoinsDeducted: stake === 0,
+        creatorCoinsDeducted: stake === 0 || isBot, // Deduct coins immediately for bot games to avoid complex prize logic later
+        isBot: isBot,
         createdAt: serverTimestamp()
       });
+
+      // Deduct coins if it's a bot game and stake > 0
+      if (isBot && stake > 0) {
+        await updateDoc(doc(db, 'users', profile.uid), {
+          coins: increment(-stake)
+        });
+      }
 
       navigate(`/battle/${battleRef.id}`);
     } catch (error) {
@@ -131,23 +142,38 @@ const BattlePage: React.FC = () => {
     }
 
     try {
-      if (battle.stake > 0) {
-        await updateDoc(doc(db, 'users', profile.uid), {
-          coins: increment(-battle.stake)
-        });
-      }
+      const battleRef = doc(db, 'battles', battle.id);
+      const userRef = doc(db, 'users', profile.uid);
 
-      await updateDoc(doc(db, 'battles', battle.id), {
-        opponentId: profile.uid,
-        opponentName: profile.name,
-        opponentPhoto: profile.photoURL || '',
-        status: 'active'
+      await runTransaction(db, async (transaction) => {
+        const bSnap = await transaction.get(battleRef);
+        if (!bSnap.exists()) throw new Error("Battle does not exist!");
+        
+        const bData = bSnap.data() as Battle;
+        if (bData.status !== 'waiting' || bData.opponentId) {
+          throw new Error("Battle is already full or started!");
+        }
+
+        // Deduct coins
+        if (battle.stake > 0) {
+          transaction.update(userRef, {
+            coins: increment(-battle.stake)
+          });
+        }
+
+        // Update battle
+        transaction.update(battleRef, {
+          opponentId: profile.uid,
+          opponentName: profile.name,
+          opponentPhoto: profile.photoURL || '',
+          status: 'active'
+        });
       });
 
       navigate(`/battle/${battle.id}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error joining battle:', error);
-      alert('ব্যাটলে জয়েন করতে সমস্যা হয়েছে।');
+      alert(error.message || 'ব্যাটলে জয়েন করতে সমস্যা হয়েছে।');
     }
   };
 
@@ -169,10 +195,10 @@ const BattlePage: React.FC = () => {
               <Swords size={12} fill="currentColor" />
               Ultimate Arena
             </div>
-            <h1 className="text-4xl md:text-5xl font-black text-gray-900 tracking-tight leading-tight">
+            <h1 className="text-3xl md:text-5xl font-black text-gray-900 tracking-tighter leading-tight">
               ব্যাটেল <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600">লবি</span>
             </h1>
-            <p className="text-gray-500 font-medium text-sm md:text-base max-w-sm">
+            <p className="text-gray-400 font-medium text-xs md:text-base max-w-sm">
               আপনার বুদ্ধিমত্তা যাচাই করুন এবং জয়ী হয়ে কয়েন বাড়িয়ে নিন!
             </p>
           </motion.div>
@@ -182,15 +208,15 @@ const BattlePage: React.FC = () => {
             animate={{ opacity: 1, x: 0 }}
             className="flex items-center gap-4"
           >
-            <div className="glass-card px-8 py-5 rounded-[32px] flex items-center gap-4 border-amber-100 bg-white/70 backdrop-blur-xl shadow-xl shadow-amber-100/20">
-              <div className="w-12 h-12 bg-amber-400 text-amber-900 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-200">
-                <Coins size={24} fill="currentColor" />
+            <div className="glass-card px-6 py-4 rounded-[28px] flex items-center gap-3 border-amber-100 bg-white/70 backdrop-blur-xl shadow-lg">
+              <div className="w-10 h-10 bg-amber-400 text-amber-900 rounded-xl flex items-center justify-center shadow-lg shadow-amber-200">
+                <Coins size={20} fill="currentColor" />
               </div>
               <div>
-                <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">ব্যালেন্স</p>
+                <p className="text-[9px] font-black text-amber-600 uppercase tracking-widest mb-0.5">ব্যালেন্স</p>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-black text-gray-900 leading-none">{formatNumber(profile?.coins || 0)}</span>
-                  <span className="text-[10px] font-bold text-gray-400 uppercase">Coins</span>
+                  <span className="text-2xl font-black text-gray-900 leading-none">{formatNumber(profile?.coins || 0)}</span>
+                  <span className="text-[9px] font-bold text-gray-400">Coins</span>
                 </div>
               </div>
             </div>
@@ -200,10 +226,9 @@ const BattlePage: React.FC = () => {
               whileTap={{ scale: 0.95 }}
               onClick={handleClaimCoins}
               disabled={claiming}
-              className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-violet-600 text-white rounded-[28px] flex items-center justify-center shadow-2xl shadow-indigo-200 disabled:opacity-50 relative group"
+              className="w-14 h-14 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-xl shadow-indigo-100 disabled:opacity-50 relative group"
             >
-              {claiming ? <Loader2 size={24} className="animate-spin" /> : <Sparkles size={28} />}
-              <span className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[8px] font-black uppercase px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">ফ্রি কয়েন</span>
+              {claiming ? <Loader2 size={20} className="animate-spin" /> : <Sparkles size={22} />}
             </motion.button>
           </motion.div>
         </header>
@@ -214,25 +239,20 @@ const BattlePage: React.FC = () => {
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.2 }}
-            className="glass-card p-10 rounded-[48px] bg-white border-none shadow-[0_20px_60px_-15px_rgba(0,0,0,0.05)] flex flex-col items-center text-center group cursor-pointer hover:shadow-[0_40px_80px_-20px_rgba(79,70,229,0.15)] transition-all duration-500"
+            className="glass-card p-8 rounded-[40px] bg-white border-none shadow-[0_10px_40px_-5px_rgba(0,0,0,0.05)] flex flex-col items-center text-center group cursor-pointer hover:shadow-xl transition-all"
             onClick={() => setShowCreateModal(true)}
           >
-            <div className="relative mb-8">
-               <div className="w-24 h-24 bg-indigo-600 text-white rounded-[32px] flex items-center justify-center shadow-2xl shadow-indigo-200 group-hover:rotate-12 group-hover:scale-110 transition-all duration-500 relative z-10">
-                 <Plus size={48} strokeWidth={3} />
+            <div className="relative mb-6">
+               <div className="w-20 h-20 bg-indigo-600 text-white rounded-3xl flex items-center justify-center shadow-xl shadow-indigo-100 group-hover:scale-105 transition-all relative z-10">
+                 <Plus size={40} strokeWidth={3} />
                </div>
-               <motion.div 
-                 animate={{ scale: [1, 1.3, 1], opacity: [0, 0.2, 0] }}
-                 transition={{ repeat: Infinity, duration: 2 }}
-                 className="absolute inset-0 bg-indigo-600 rounded-[32px] blur-xl"
-               ></motion.div>
             </div>
-            <h3 className="text-3xl font-black text-gray-900 mb-3">ব্যাটেল শুরু করুন</h3>
-            <p className="text-gray-400 font-medium mb-10 text-sm">নিজের বন্ধুদের সাথে বা সারা বিশ্বের প্লেয়ারদের চ্যালেঞ্জ করুন।</p>
+            <h3 className="text-2xl font-black text-gray-900 mb-2">ব্যাটেল শুরু করুন</h3>
+            <p className="text-gray-400 font-medium mb-6 text-xs">বন্ধুদের বা বিশ্বব্যাপী চ্যালেঞ্জ করুন।</p>
             
-            <div className="mt-auto inline-flex items-center gap-2 px-6 py-3 bg-gray-50 group-hover:bg-indigo-600 group-hover:text-white rounded-2xl transition-colors font-black text-xs uppercase tracking-widest text-gray-400">
+            <div className="mt-auto inline-flex items-center gap-2 px-6 py-3 bg-gray-50 border border-gray-100 group-hover:bg-indigo-600 group-hover:text-white rounded-xl transition-colors font-black text-[10px] uppercase tracking-widest text-gray-400">
                <span>চ্যালেঞ্জ পাঠান</span>
-               <Zap size={14} fill="currentColor" />
+               <Zap size={12} fill="currentColor" />
             </div>
           </motion.div>
 
@@ -360,83 +380,87 @@ const BattlePage: React.FC = () => {
       {/* Improved Create Modal */}
       <AnimatePresence>
         {showCreateModal && (
-          <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6">
             <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 40 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 40 }}
-              className="bg-white w-full max-w-2xl rounded-[56px] shadow-2xl p-1 md:p-2 overflow-hidden"
+              initial={{ opacity: 0, y: 100 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 100 }}
+              className="bg-white w-full max-w-lg rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="p-8 md:p-12 space-y-10">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <h2 className="text-4xl font-black text-gray-900 tracking-tight">ব্যাটেল <span className="text-indigo-600">সেটআপ</span></h2>
-                    <p className="text-gray-400 font-medium text-sm">আপনার পছন্দের বিভাগ এবং স্টেক সিলেক্ট করুন</p>
-                  </div>
-                  <button 
-                    onClick={() => setShowCreateModal(false)}
-                    className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors"
-                  >
-                    <X size={24} />
-                  </button>
+              <div className="p-6 border-b border-gray-50 flex items-center justify-between sticky top-0 bg-white z-10">
+                <div className="space-y-0.5">
+                  <h2 className="text-xl font-black text-gray-900 tracking-tight">ব্যাটেল সেটআপ</h2>
+                  <p className="text-gray-400 font-medium text-[10px]">বিভাগ এবং স্টেক সিলেক্ট করুন</p>
                 </div>
+                <button 
+                  onClick={() => setShowCreateModal(false)}
+                  className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
 
-                <div className="space-y-4">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] px-2 mb-2">স্টেক এমাউন্ট (কয়েন)</p>
-                  <div className="grid grid-cols-5 gap-3">
+              <div className="p-6 space-y-8 overflow-y-auto custom-scrollbar">
+                <div className="space-y-3">
+                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">স্টেক (কয়েন)</p>
+                  <div className="grid grid-cols-5 gap-2">
                     {[0, 10, 20, 50, 100].map((s) => (
                       <button
                         key={s}
                         onClick={() => setStake(s)}
                         className={cn(
-                          "py-5 rounded-3xl font-black border-2 transition-all flex flex-col items-center justify-center gap-2",
+                          "py-3 rounded-xl font-black border-2 transition-all flex flex-col items-center justify-center gap-1",
                           stake === s 
-                            ? "bg-indigo-600 border-indigo-600 text-white shadow-2xl shadow-indigo-200" 
+                            ? "bg-indigo-600 border-indigo-600 text-white shadow-xl shadow-indigo-100" 
                             : "bg-gray-50 border-gray-50 text-gray-400 hover:border-gray-200"
                         )}
                       >
-                        {s === 0 ? (
-                          <Zap size={18} fill={stake === s ? "currentColor" : "none"} className={stake === s ? "" : "text-gray-300"} />
-                        ) : (
-                          <Coins size={18} fill={stake === s ? "currentColor" : "none"} className={stake === s ? "" : "text-gray-300"} />
-                        )}
-                        <span className="text-xs md:text-lg">{s === 0 ? "ফ্রি" : formatNumber(s)}</span>
+                        {s === 0 ? <Zap size={14} fill={stake === s ? "currentColor" : "none"} /> : <Coins size={14} fill={stake === s ? "currentColor" : "none"} />}
+                        <span className="text-[10px]">{s === 0 ? "ফ্রি" : formatNumber(s)}</span>
                       </button>
                     ))}
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] px-2 mb-2">ক্যাটাগরি সিলেক্ট করুন</p>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                <div className="space-y-3">
+                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">ক্যাটাগরি</p>
+                  <div className="grid grid-cols-3 gap-3">
                     {categories.map((cat) => (
                       <button
                         key={cat.id}
                         onClick={() => setSelectedCategory(cat.id)}
                         className={cn(
-                          "p-5 rounded-[32px] border-2 transition-all flex flex-col items-center gap-3",
+                          "p-4 rounded-2xl border transition-all flex flex-col items-center gap-2",
                           selectedCategory === cat.id 
-                            ? "bg-white border-indigo-500 shadow-xl shadow-indigo-100" 
-                            : "bg-gray-50 border-gray-50 hover:border-gray-200"
+                            ? "bg-indigo-50 border-indigo-500 shadow-sm" 
+                            : "bg-white border-gray-100 hover:border-gray-200"
                         )}
                       >
-                        <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg", cat.color, selectedCategory === cat.id ? "scale-110 shadow-indigo-200" : "")}>
-                          <CategoryIcon icon={cat.icon} size={24} />
+                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-white", cat.color)}>
+                          <CategoryIcon icon={cat.icon} size={18} />
                         </div>
-                        <span className={cn("text-xs font-black", selectedCategory === cat.id ? "text-indigo-600" : "text-gray-600")}>{cat.nameBn}</span>
+                        <span className={cn("text-[10px] font-bold text-center", selectedCategory === cat.id ? "text-indigo-600" : "text-gray-600")}>{cat.nameBn}</span>
                       </button>
                     ))}
                   </div>
                 </div>
 
-                <div className="flex gap-4 pt-4">
+                <div className="flex flex-col gap-3 pt-4">
                   <button 
-                    onClick={handleCreateBattle}
+                    onClick={() => handleCreateBattle(false)}
                     disabled={creating || !selectedCategory}
-                    className="flex-1 py-6 bg-indigo-600 text-white rounded-[28px] font-black uppercase text-sm tracking-[0.2em] shadow-2xl shadow-indigo-100 active:scale-95 transition-all flex items-center justify-center gap-4 disabled:opacity-50"
+                    className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg shadow-indigo-100 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
                   >
-                    {creating ? <Loader2 size={24} className="animate-spin" /> : <Swords size={24} fill="currentColor" />}
-                    এরিনাতে প্রবেশ করুন
+                    {creating ? <Loader2 size={20} className="animate-spin" /> : <Users size={20} fill="currentColor" />}
+                    প্লেয়ার খুঁজুন
+                  </button>
+                  <button 
+                    onClick={() => handleCreateBattle(true)}
+                    disabled={creating || !selectedCategory}
+                    className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg shadow-emerald-100 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                  >
+                    {creating ? <Loader2 size={20} className="animate-spin" /> : <Zap size={20} fill="currentColor" />}
+                    AI এর সাথে খেলুন
                   </button>
                 </div>
               </div>

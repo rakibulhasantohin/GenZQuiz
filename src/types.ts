@@ -121,5 +121,6 @@ export interface Battle {
   creatorPrizeAwarded?: boolean;
   opponentPrizeAwarded?: boolean;
   winnerId?: string | 'draw';
+  isBot?: boolean;
   createdAt: any; // Firestore timestamp
 }

@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { formatNumber } from '../lib/utils';
+import { formatNumber, cn } from '../lib/utils';
 import { offlineStorage } from '../services/offlineStorage';
 import { useAuth } from '../AuthContext';
 import CategoryIcon from '../components/CategoryIcon';
@@ -56,52 +56,33 @@ const CategoryPage: React.FC = () => {
         </p>
       </header>
 
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3">
         {categories.map((category, i) => (
           <motion.div
             key={category.id}
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
-            className="glass-card p-3 md:p-6 rounded-[20px] md:rounded-[32px] group card-hover flex flex-col"
+            className="bg-white p-3 md:p-4 rounded-xl md:rounded-[28px] border border-gray-50 flex flex-col hover:border-indigo-100 transition-all shadow-sm group"
           >
-            <div className="flex flex-col md:flex-row items-center md:items-start gap-2 md:gap-4 mb-3 md:mb-6 text-center md:text-left">
-              <div className={`w-10 h-10 md:w-14 md:h-14 ${category.color} rounded-xl md:rounded-2xl flex items-center justify-center text-white shadow-lg transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3 shrink-0`}>
-                <div className="md:hidden">
+            <div className="flex flex-col items-center gap-2 text-center">
+              <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-md group-hover:scale-110 group-hover:rotate-3 transition-transform", category.color)}>
                   <CategoryIcon icon={category.icon} size={18} />
-                </div>
-                <div className="hidden md:block">
-                  <CategoryIcon icon={category.icon} size={24} />
-                </div>
               </div>
-              <div className="min-w-0 w-full">
-                <h3 className="text-sm md:text-xl font-black text-gray-900 truncate">{category.nameBn}</h3>
-                <div className="flex flex-wrap items-center justify-center md:justify-start gap-1 mt-0.5">
-                  <p className="text-[7px] md:text-[10px] text-gray-400 font-black uppercase tracking-widest truncate">
-                    {formatNumber(categoryCounts[category.id] || category.questionCount || 10)}+ কুইজ
-                  </p>
-                  {cachedCategories.includes(category.id) && (
-                    <div className="flex items-center gap-0.5 text-[6px] md:text-[8px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-50 px-1 py-0.5 rounded-md">
-                      <CheckCircle2 size={8} className="md:hidden" />
-                      <CheckCircle2 size={10} className="hidden md:block" />
-                      অফলাইন
-                    </div>
-                  )}
-                </div>
+              <div className="min-w-0 w-full mb-1">
+                <h3 className="text-xs md:text-sm font-black text-gray-900 truncate leading-tight tracking-tight">{category.nameBn}</h3>
+                <p className="text-[7px] md:text-[9px] text-gray-400 font-bold uppercase tracking-widest truncate mt-0.5">
+                  {formatNumber(categoryCounts[category.id] || category.questionCount || 10)}+ কুইজ
+                </p>
               </div>
             </div>
             
-            <p className="text-[10px] md:text-sm text-gray-500 font-medium mb-4 md:mb-8 leading-relaxed flex-1 line-clamp-2 md:line-clamp-none">
-              {category.description}
-            </p>
-
             <Link
               to={`/quiz/${category.id}`}
-              className="w-full py-2 md:py-4 bg-gray-50 text-gray-700 rounded-xl md:rounded-2xl font-black text-[10px] md:text-sm flex items-center justify-center gap-1 md:gap-2 hover:bg-indigo-600 hover:text-white transition-all active:scale-95 shadow-sm group/btn"
+              className="mt-2 w-full py-2 bg-indigo-50 text-indigo-600 rounded-lg md:rounded-xl font-black text-[10px] flex items-center justify-center gap-1 hover:bg-indigo-600 hover:text-white transition-all shadow-sm"
             >
-              শুরু করুন
-              <ArrowRight size={14} className="md:hidden group-hover/btn:translate-x-1 transition-transform" />
-              <ArrowRight size={18} className="hidden md:block group-hover/btn:translate-x-1 transition-transform" />
+              প্লে করুন
+              <ArrowRight size={12} />
             </Link>
           </motion.div>
         ))}

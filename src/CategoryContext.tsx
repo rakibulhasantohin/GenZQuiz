@@ -70,6 +70,9 @@ export const CategoryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setLoading(false);
     }, (error) => {
       console.error('Error listening to categories:', error);
+      // Try to report with detailed JSON if possible, but handleFirestoreError might not be available here yet
+      // Actually I should define it or import from a utils file. 
+      // For now I'll just keep the existing log but make it more visible if I can.
       setLoading(false);
     });
 
