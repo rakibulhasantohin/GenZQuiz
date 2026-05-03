@@ -83,13 +83,13 @@ const BattlePage: React.FC = () => {
         qRef,
         where('category', '==', selectedCategory),
         where('approved', '==', true),
-        limit(20)
+        limit(100)
       );
       const qSnapshot = await getDocs(qQuery);
       let selectedQuestions: Question[] = qSnapshot.docs
         .map(d => ({ id: d.id, ...d.data() } as Question))
         .sort(() => 0.5 - Math.random())
-        .slice(0, 5);
+        .slice(0, 10);
 
       if (selectedQuestions.length === 0) {
         alert('এই বিভাগে কোনো প্রশ্ন পাওয়া যায়নি। অন্য বিভাগ চেষ্টা করুন।');
