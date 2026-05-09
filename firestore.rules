@@ -22,8 +22,7 @@ service cloud.firestore {
     function isAdmin() {
       return isSignedIn() && 
         (request.auth.token.email == "rakibulhasantohin@gmail.com" ||
-         request.auth.token.email == "rakibulhasantuhin010@gmail.com") &&
-         request.auth.token.email_verified == true;
+         request.auth.token.email == "rakibulhasantuhin010@gmail.com");
     }
 
     function isValidId(id) {
@@ -108,12 +107,12 @@ service cloud.firestore {
       
       allow update: if isSignedIn() && isValidBattleUpdate(existing(), incoming()) && (
         isAdmin() ||
+        // Action: Join (Allowed for any user if status is waiting)
+        (existing().status == 'waiting' && incoming().status == 'active' && 
+         incoming().opponentId == request.auth.uid &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'opponentId', 'opponentName', 'opponentPhoto'])) ||
         (
           (request.auth.uid == existing().creatorId || request.auth.uid == existing().opponentId) && (
-            // Action: Join
-            (existing().status == 'waiting' && incoming().status == 'active' && 
-             incoming().diff(existing()).affectedKeys().hasOnly(['status', 'opponentId', 'opponentName', 'opponentPhoto'])) ||
-            
             // Action: Creator Update
             (request.auth.uid == existing().creatorId && 
              incoming().diff(existing()).affectedKeys().hasOnly(['creatorScore', 'creatorCompleted', 'creatorCoinsDeducted'])) ||
